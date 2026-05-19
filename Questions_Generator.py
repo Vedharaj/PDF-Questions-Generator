@@ -7,6 +7,9 @@ from google.api_core.exceptions import ResourceExhausted
 from tqdm import tqdm
 from dotenv import load_dotenv
 
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning)
+
 # Load environment variables from .env file
 load_dotenv()
 

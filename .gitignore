@@ -80,3 +80,4 @@ logs/
 .pytest_cache/
 .coverage
 htmlcov/
+output/
