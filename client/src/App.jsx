@@ -39,17 +39,27 @@ function App() {
 
   const [currentIndex, setCurrentIndex] = useState(0);
 
-  const [selectedAnswer, setSelectedAnswer] = useState(null);
-
-  const [showAnswer, setShowAnswer] = useState(false);
+  const [answeredQuestions, setAnsweredQuestions] = useState({});
 
   const [score, setScore] = useState(0);
+
+  const [quizHistory, setQuizHistory] = useState([]);
 
   // =================================================
   // LOAD FILE LIST
   // =================================================
 
   useEffect(() => {
+
+    // Load quiz history from localStorage
+    const savedHistory = localStorage.getItem("quizHistory");
+    if (savedHistory) {
+      try {
+        setQuizHistory(JSON.parse(savedHistory));
+      } catch (err) {
+        console.error("Failed to load quiz history:", err);
+      }
+    }
 
     // Fetch available question JSON files from the Flask API
     const fetchFiles = async () => {
@@ -118,7 +128,7 @@ function App() {
 
     return () => window.removeEventListener("keydown", handleKeyDown);
 
-  }, [quizStarted, questions.length, currentIndex]);
+  }, [quizStarted, questions.length, currentIndex, answeredQuestions]);
 
   const loadQuestions = async (file) => {
 
@@ -231,7 +241,9 @@ function App() {
 
     setLoadError("");
     setQuestions(filteredQuestions);
-    resetExam();
+    setAnsweredQuestions({});
+    setScore(0);
+    setCurrentIndex(0);
     setQuizStarted(true);
   };
 
@@ -243,9 +255,7 @@ function App() {
 
     setCurrentIndex(0);
 
-    setSelectedAnswer(null);
-
-    setShowAnswer(false);
+    setAnsweredQuestions({});
 
     setScore(0);
   };
@@ -266,11 +276,11 @@ function App() {
 
   const handleAnswerClick = (option) => {
 
-    if (showAnswer) return;
+    // Prevent answering if already answered
+    if (answeredQuestions[currentIndex]) return;
 
-    setSelectedAnswer(option);
-
-    setShowAnswer(true);
+    const newAnswered = { ...answeredQuestions, [currentIndex]: option };
+    setAnsweredQuestions(newAnswered);
 
     if (option === currentQuestion.answer) {
 
@@ -288,9 +298,9 @@ function App() {
 
       setCurrentIndex(prev => prev + 1);
 
-      setSelectedAnswer(null);
-
-      setShowAnswer(false);
+    } else {
+      // Quiz finished - show results
+      saveQuizHistory();
     }
   };
 
@@ -304,9 +314,6 @@ function App() {
 
       setCurrentIndex(prev => prev - 1);
 
-      setSelectedAnswer(null);
-
-      setShowAnswer(false);
     }
   };
 
@@ -324,9 +331,7 @@ function App() {
 
     setCurrentIndex(0);
 
-    setSelectedAnswer(null);
-
-    setShowAnswer(false);
+    setAnsweredQuestions({});
 
     setScore(0);
   };
@@ -335,10 +340,31 @@ function App() {
   // PROGRESS
   // =================================================
 
+  const saveQuizHistory = () => {
+    const historyEntry = {
+      id: Date.now(),
+      file: selectedFile,
+      totalQuestions: questions.length,
+      score: score,
+      percentage: Math.round((score / questions.length) * 100),
+      timestamp: new Date().toLocaleString(),
+      answers: answeredQuestions,
+      pageStart: pageStart,
+      pageEnd: pageEnd,
+    };
+
+    const updatedHistory = [historyEntry, ...quizHistory];
+    setQuizHistory(updatedHistory);
+    localStorage.setItem("quizHistory", JSON.stringify(updatedHistory));
+    setQuizStarted(false);
+  };
+
   const progress =
     questions.length > 0
       ? ((currentIndex + 1) / questions.length) * 100
       : 0;
+
+  const showAnswer = currentIndex in answeredQuestions;
 
   // =================================================
   // LOADING
@@ -380,140 +406,183 @@ function App() {
     return (
       <div className="app-shell landing-shell">
 
-        <div className="landing-layout">
+        <div className="landing-main">
 
-        <section className="hero-panel">
+          <div className="landing-layout">
 
-          <div className="hero-copy">
+            <section className="hero-panel">
 
-            <span className="eyebrow">Question setup</span>
+              <div className="hero-copy">
 
-            <h1>Choose a file, filter by page range, then start the quiz.</h1>
+                <span className="eyebrow">Question setup</span>
 
-            <p>
-              Load one JSON file at a time, set the page range you want to practice,
-              and launch a focused MCQ session.
-            </p>
+                <h1>Choose a file, filter by page range, then start the quiz.</h1>
 
-          </div>
+                <p>
+                  Load one JSON file at a time, set the page range you want to practice,
+                  and launch a focused MCQ session.
+                </p>
 
-          <div className="hero-stats">
-
-            <div>
-              <strong>{allQuestions.length}</strong>
-              <span>Questions loaded</span>
-            </div>
-
-            <div>
-              <strong>{pageStart} - {pageEnd}</strong>
-              <span>Current range</span>
-            </div>
-
-            <div>
-              <strong>{files.length}</strong>
-              <span>JSON files</span>
-            </div>
-
-          </div>
-
-        </section>
-
-        <section className="setup-panel">
-
-          <div className="panel-header">
-            <h2>Quiz setup</h2>
-            <p>Select the source file and page range.</p>
-          </div>
-
-          <div className="setup-grid">
-
-            <label className="field">
-              <span>JSON file</span>
-              <div className="field-control dropdown">
-                <FileText size={18} />
-                <select
-                  value={selectedFile}
-                  onChange={(e) => setSelectedFile(e.target.value)}
-                >
-                  {files.map((file) => (
-                    <option key={file} value={file}>
-                      {file}
-                    </option>
-                  ))}
-                </select>
               </div>
-            </label>
 
-            <label className="field">
-              <span>Start page</span>
-              <input
-                className="field-control number-input"
-                type="number"
-                min={1}
-                max={pageEnd}
-                value={pageStart}
-                onChange={(e) =>
-                  setPageStart(Math.max(1, Number(e.target.value) || 1))
-                }
-              />
-            </label>
+              <div className="hero-stats">
 
-            <label className="field">
-              <span>End page</span>
-              <input
-                className="field-control number-input"
-                type="number"
-                min={pageStart}
-                value={pageEnd}
-                onChange={(e) =>
-                  setPageEnd(Math.max(pageStart, Number(e.target.value) || pageStart))
-                }
-              />
-            </label>
+                <div>
+                  <strong>{allQuestions.length}</strong>
+                  <span>Questions loaded</span>
+                </div>
 
-            <label className="field checkbox-field">
-              <input
-                type="checkbox"
-                checked={distributeQuestions}
-                onChange={(e) => setDistributeQuestions(e.target.checked)}
-              />
-              <span>Distribute questions evenly</span>
-            </label>
+                <div>
+                  <strong>{pageStart} - {pageEnd}</strong>
+                  <span>Current range</span>
+                </div>
 
-            {distributeQuestions && (
-              <label className="field">
-                <span>Total questions needed</span>
-                <input
-                  className="field-control number-input"
-                  type="number"
-                  min={1}
-                  value={totalQuestionsWanted}
-                  onChange={(e) =>
-                    setTotalQuestionsWanted(Math.max(1, Number(e.target.value) || 1))
-                  }
-                />
-              </label>
-            )}
+                <div>
+                  <strong>{files.length}</strong>
+                  <span>JSON files</span>
+                </div>
+
+              </div>
+
+            </section>
+
+            <section className="setup-panel">
+
+              <div className="panel-header">
+                <h2>Quiz setup</h2>
+                <p>Select the source file and page range.</p>
+              </div>
+
+              <div className="setup-grid">
+
+                <label className="field">
+                  <span>JSON file</span>
+                  <div className="field-control dropdown">
+                    <FileText size={18} />
+                    <select
+                      value={selectedFile}
+                      onChange={(e) => setSelectedFile(e.target.value)}
+                    >
+                      {files.map((file) => (
+                        <option key={file} value={file}>
+                          {file}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </label>
+
+                <label className="field">
+                  <span>Start page</span>
+                  <input
+                    className="field-control number-input"
+                    type="number"
+                    min={1}
+                    max={pageEnd}
+                    value={pageStart}
+                    onChange={(e) =>
+                      setPageStart(Math.max(1, Number(e.target.value) || 1))
+                    }
+                  />
+                </label>
+
+                <label className="field">
+                  <span>End page</span>
+                  <input
+                    className="field-control number-input"
+                    type="number"
+                    min={pageStart}
+                    value={pageEnd}
+                    onChange={(e) =>
+                      setPageEnd(Math.max(pageStart, Number(e.target.value) || pageStart))
+                    }
+                  />
+                </label>
+
+                <label className="field checkbox-field">
+                  <input
+                    type="checkbox"
+                    checked={distributeQuestions}
+                    onChange={(e) => setDistributeQuestions(e.target.checked)}
+                  />
+                  <span>Distribute questions evenly</span>
+                </label>
+
+                {distributeQuestions && (
+                  <label className="field">
+                    <span>Total questions needed</span>
+                    <input
+                      className="field-control number-input"
+                      type="number"
+                      min={1}
+                      value={totalQuestionsWanted}
+                      onChange={(e) =>
+                        setTotalQuestionsWanted(Math.max(1, Number(e.target.value) || 1))
+                      }
+                    />
+                  </label>
+                )}
+
+              </div>
+
+              <div className="setup-footer">
+
+                <p>
+                  Pages available in file: <strong>1 to {Math.max(pageEnd, pageStart)}</strong>
+                </p>
+
+                <button
+                  className="primary-button"
+                  onClick={startQuiz}
+                  disabled={!allQuestions.length || pageStart > pageEnd}
+                >
+                  Start Quiz
+                </button>
+
+              </div>
+
+            </section>
 
           </div>
 
-          <div className="setup-footer">
+          {quizHistory.length > 0 && (
+            <section className="history-panel">
 
-            <p>
-              Pages available in file: <strong>1 to {Math.max(pageEnd, pageStart)}</strong>
-            </p>
+              <div className="panel-header">
+                <h2>Quiz History</h2>
+                <p>Your previous quiz attempts</p>
+              </div>
 
-            <button
-              className="primary-button"
-              onClick={startQuiz}
-              disabled={!allQuestions.length || pageStart > pageEnd}
-            >
-              Start Quiz
-            </button>
+              <div className="history-list">
+                {quizHistory.map((entry) => (
+                  <div key={entry.id} className="history-item">
+                    <div className="history-info">
+                      <h4>{entry.file}</h4>
+                      <p>{entry.timestamp}</p>
+                      <p className="page-range">Pages {entry.pageStart} - {entry.pageEnd}</p>
+                    </div>
+                    <div className="history-score">
+                      <div className="score-badge">
+                        <strong>{entry.score}/{entry.totalQuestions}</strong>
+                        <span>{entry.percentage}%</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
 
-          </div>
+              <button
+                className="ghost-button"
+                onClick={() => {
+                  setQuizHistory([]);
+                  localStorage.removeItem("quizHistory");
+                }}
+              >
+                Clear History
+              </button>
 
-        </section>
+            </section>
+          )}
 
         </div>
 
@@ -617,13 +686,16 @@ function App() {
           </button>
 
           <button
-            className="nav-icon-button primary-nav"
+            className={`nav-icon-button ${currentIndex === questions.length - 1 ? "finish-btn" : "primary-nav"}`}
             onClick={nextQuestion}
-            disabled={currentIndex === questions.length - 1}
-            aria-label="Next question"
-            title="Next question"
+            aria-label={currentIndex === questions.length - 1 ? "Finish quiz" : "Next question"}
+            title={currentIndex === questions.length - 1 ? "Finish quiz" : "Next question"}
           >
-            <ChevronRight size={20} />
+            {currentIndex === questions.length - 1 ? (
+              <Trophy size={20} />
+            ) : (
+              <ChevronRight size={20} />
+            )}
           </button>
 
         </div>
@@ -642,22 +714,27 @@ function App() {
 
               const isCorrect = option === currentQuestion.answer;
 
-              const isSelected = option === selectedAnswer;
+              const userAnswer = answeredQuestions[currentIndex];
+
+              const isSelected = option === userAnswer;
+
+              const isAnswered = currentIndex in answeredQuestions;
 
               return (
                 <button
                   key={index}
-                  className={`option ${showAnswer && isCorrect ? "correct" : ""} ${showAnswer && isSelected && !isCorrect ? "wrong" : ""}`}
+                  className={`option ${isAnswered && isCorrect ? "correct" : ""} ${isAnswered && isSelected && !isCorrect ? "wrong" : ""}`}
                   onClick={() => handleAnswerClick(option)}
+                  disabled={isAnswered}
                 >
 
                   <span>{option}</span>
 
-                  {showAnswer && isCorrect && (
+                  {isAnswered && isCorrect && (
                     <CheckCircle2 size={20} />
                   )}
 
-                  {showAnswer && isSelected && !isCorrect && (
+                  {isAnswered && isSelected && !isCorrect && (
                     <XCircle size={20} />
                   )}
 
@@ -667,7 +744,7 @@ function App() {
 
           </div>
 
-          {showAnswer && (
+          {currentIndex in answeredQuestions && (
 
             <div className="explanation">
 

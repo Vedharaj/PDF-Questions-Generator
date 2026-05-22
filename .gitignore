@@ -80,4 +80,6 @@ logs/
 .pytest_cache/
 .coverage
 htmlcov/
-output/
+*.json
+poppler-26.05.0/
+*.pdf

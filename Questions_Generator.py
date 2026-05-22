@@ -82,6 +82,39 @@ CONTENT:
 
     max_retries = 3
     last_raw = None
+
+    def repair_invalid_json_escapes(text):
+        """Escape stray backslashes inside JSON strings without touching valid escapes."""
+        valid_escapes = set('"\\/bfnrtu')
+        repaired = []
+        in_string = False
+        i = 0
+        while i < len(text):
+            char = text[i]
+            if char == '"':
+                repaired.append(char)
+                escaped = False
+                j = i - 1
+                while j >= 0 and text[j] == '\\':
+                    escaped = not escaped
+                    j -= 1
+                if not escaped:
+                    in_string = not in_string
+                i += 1
+                continue
+
+            if in_string and char == '\\':
+                next_char = text[i + 1] if i + 1 < len(text) else ''
+                if next_char not in valid_escapes:
+                    repaired.append('\\\\')
+                    i += 1
+                    continue
+
+            repaired.append(char)
+            i += 1
+
+        return ''.join(repaired)
+
     for attempt in range(1, max_retries + 1):
         # print(f"Generating {count} questions for page {page_num} (attempt {attempt})...\n")
         try:
@@ -99,9 +132,10 @@ CONTENT:
         last_raw = raw
 
         cleaned = re.sub(r"```json|```", "", raw).strip()
+        repaired = repair_invalid_json_escapes(cleaned)
 
         try:
-            qlist = json.loads(cleaned)
+            qlist = json.loads(repaired)
             # Ensure each question contains the page and difficulty fields
             for q in qlist:
                 q["page"] = page_num
