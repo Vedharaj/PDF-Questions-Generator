@@ -4,8 +4,9 @@ import re
 import time
 import google.generativeai as genai
 from google.api_core.exceptions import ResourceExhausted
-from tqdm import tqdm
 from dotenv import load_dotenv
+
+from progress_ui import progress_iter
 
 import warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
@@ -212,7 +213,7 @@ def generate_questions(json_file, start_page, end_page, question_count, difficul
         pending_pages = sorted(selected_pages, key=lambda x: x[0])
 
     # Generate and append page results incrementally to the output file.
-    for page_num, page_text in tqdm(pending_pages, desc="Question generation", unit="page"):
+    for page_num, page_text in progress_iter(pending_pages, "Generating questions", unit="pages"):
         # Generate `question_count` questions for each page (per-page count)
         count = question_count
         if count <= 0:

@@ -1,9 +1,10 @@
-from flask import Flask, jsonify, send_from_directory, abort
+from flask import Flask, jsonify, send_from_directory, abort, Response
 from flask_cors import CORS
 import os
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 QUESTIONS_DIR = os.path.join(BASE_DIR, "output", "Questions")
+SUMMARIES_DIR = os.path.join(BASE_DIR, "output", "summaries")
 
 app = Flask(__name__)
 CORS(app)
@@ -40,9 +41,39 @@ def get_question_file(filename):
     return send_from_directory(QUESTIONS_DIR, filename)
 
 
+@app.route("/api/summaries", methods=["GET"])
+def list_summary_files():
+    """Return a JSON list of available .md files in the summaries folder."""
+    if not os.path.isdir(SUMMARIES_DIR):
+        return jsonify([])
+
+    files = [f for f in os.listdir(SUMMARIES_DIR) if f.lower().endswith('.md')]
+    files.sort()
+    return jsonify(files)
+
+
+@app.route("/api/summaries/<path:filename>", methods=["GET"])
+def get_summary_file(filename):
+    """Return the content of a Markdown summary file."""
+    if not filename.lower().endswith('.md'):
+        abort(400, "Only .md files are allowed")
+
+    requested_path = os.path.realpath(os.path.join(SUMMARIES_DIR, filename))
+    if not requested_path.startswith(os.path.realpath(SUMMARIES_DIR) + os.sep):
+        abort(403)
+
+    if not os.path.exists(requested_path):
+        abort(404)
+
+    with open(requested_path, "r", encoding="utf-8") as handle:
+        content = handle.read()
+
+    return Response(content, mimetype="text/markdown; charset=utf-8")
+
+
 @app.route("/", methods=["GET"])
 def health():
-    return jsonify({"status": "ok", "questions_dir": os.path.abspath(QUESTIONS_DIR)})
+    return jsonify({"status": "ok", "questions_dir": os.path.abspath(QUESTIONS_DIR), "summaries_dir": os.path.abspath(SUMMARIES_DIR)})
 
 
 if __name__ == '__main__':

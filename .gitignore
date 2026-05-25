@@ -83,3 +83,4 @@ htmlcov/
 *.json
 poppler-26.05.0/
 *.pdf
+output/summaries/*.md

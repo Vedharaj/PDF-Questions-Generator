@@ -1,432 +1,477 @@
-import { useEffect, useMemo, useState } from "react";
+  import { useEffect, useMemo, useState } from "react";
 
-import {
-  ChevronLeft,
-  ChevronRight,
-  CheckCircle2,
-  XCircle,
-  Shuffle,
-  FileText,
-  Trophy,
-  BookOpen,
-} from "lucide-react";
+  import { BookOpen, Clock3, FileText, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 
-import "./App.css";
+  import HistorySecondaryContent from "./components/HistorySecondaryContent";
+  import QuizSecondaryContent from "./components/QuizSecondaryContent";
+  import SummarySecondaryContent from "./components/SummarySecondaryContent";
+  import QuizPage from "./pages/QuizPage";
+  import SummarizePage from "./pages/SummarizePage";
+  import WorkspaceShell from "./WorkspaceShell";
+  import { useQuizStore } from "./store/useQuizStore";
 
-function App() {
+  import "./App.css";
 
-  const [files, setFiles] = useState([]);
+  function App() {
+    const [activeSection, setActiveSection] = useState("quiz");
+    const [secondaryCollapsed, setSecondaryCollapsed] = useState(false);
+    const [summaryFiles, setSummaryFiles] = useState([]);
+    const [selectedSummaryFile, setSelectedSummaryFile] = useState("");
+    const [summaryContent, setSummaryContent] = useState("");
+    const [summaryFilesLoading, setSummaryFilesLoading] = useState(false);
+    const [summaryContentLoading, setSummaryContentLoading] = useState(false);
+    const [summaryError, setSummaryError] = useState("");
 
-  const [selectedFile, setSelectedFile] = useState("");
+    const mode = useQuizStore((state) => state.mode);
+    const files = useQuizStore((state) => state.files);
+    const selectedFile = useQuizStore((state) => state.selectedFile);
+    const allQuestions = useQuizStore((state) => state.allQuestions);
+    const questions = useQuizStore((state) => state.questions);
+    const loading = useQuizStore((state) => state.loading);
+    const loadError = useQuizStore((state) => state.loadError);
+    const pageStart = useQuizStore((state) => state.pageStart);
+    const pageEnd = useQuizStore((state) => state.pageEnd);
+    const totalQuestionsWanted = useQuizStore((state) => state.totalQuestionsWanted);
+    const distributeQuestions = useQuizStore((state) => state.distributeQuestions);
+    const quizStarted = useQuizStore((state) => state.quizStarted);
+    const currentIndex = useQuizStore((state) => state.currentIndex);
+    const answeredQuestions = useQuizStore((state) => state.answeredQuestions);
+    const score = useQuizStore((state) => state.score);
+    const quizHistory = useQuizStore((state) => state.quizHistory);
+    const showHistoryRecords = useQuizStore((state) => state.showHistoryRecords);
 
-  const [allQuestions, setAllQuestions] = useState([]);
+    const setMode = useQuizStore((state) => state.setMode);
+    const setSelectedFile = useQuizStore((state) => state.setSelectedFile);
+    const setPageStart = useQuizStore((state) => state.setPageStart);
+    const setPageEnd = useQuizStore((state) => state.setPageEnd);
+    const setTotalQuestionsWanted = useQuizStore((state) => state.setTotalQuestionsWanted);
+    const setDistributeQuestions = useQuizStore((state) => state.setDistributeQuestions);
+    const setQuizStarted = useQuizStore((state) => state.setQuizStarted);
+    const setShowHistoryRecords = useQuizStore((state) => state.setShowHistoryRecords);
+    const loadFiles = useQuizStore((state) => state.loadFiles);
+    const loadQuestions = useQuizStore((state) => state.loadQuestions);
+    const startQuiz = useQuizStore((state) => state.startQuiz);
+    const shuffleQuestions = useQuizStore((state) => state.shuffleQuestions);
+    const nextQuestion = useQuizStore((state) => state.nextQuestion);
+    const prevQuestion = useQuizStore((state) => state.prevQuestion);
+    const handleAnswerClick = useQuizStore((state) => state.handleAnswerClick);
+    const deleteHistoryEntry = useQuizStore((state) => state.deleteHistoryEntry);
+    const clearHistory = useQuizStore((state) => state.clearHistory);
 
-  const [questions, setQuestions] = useState([]);
+    useEffect(() => {
+      loadFiles();
+    }, [loadFiles]);
 
-  const [loading, setLoading] = useState(false);
+    useEffect(() => {
+      setMode(activeSection === "summaries" ? "summarize" : "quiz");
+    }, [activeSection, setMode]);
 
-  const [loadError, setLoadError] = useState("");
-
-  const [pageStart, setPageStart] = useState(1);
-
-  const [pageEnd, setPageEnd] = useState(1);
-
-  const [totalQuestionsWanted, setTotalQuestionsWanted] = useState(10);
-
-  const [distributeQuestions, setDistributeQuestions] = useState(false);
-
-  const [quizStarted, setQuizStarted] = useState(false);
-
-  const [currentIndex, setCurrentIndex] = useState(0);
-
-  const [answeredQuestions, setAnsweredQuestions] = useState({});
-
-  const [score, setScore] = useState(0);
-
-  const [quizHistory, setQuizHistory] = useState([]);
-
-  // =================================================
-  // LOAD FILE LIST
-  // =================================================
-
-  useEffect(() => {
-
-    // Load quiz history from localStorage
-    const savedHistory = localStorage.getItem("quizHistory");
-    if (savedHistory) {
-      try {
-        setQuizHistory(JSON.parse(savedHistory));
-      } catch (err) {
-        console.error("Failed to load quiz history:", err);
+    useEffect(() => {
+      if (selectedFile) {
+        loadQuestions(selectedFile);
       }
-    }
+    }, [loadQuestions, selectedFile]);
 
-    // Fetch available question JSON files from the Flask API
-    const fetchFiles = async () => {
-      setLoading(true);
-      setLoadError("");
-      try {
-        const res = await fetch('/api/files');
-        if (!res.ok) throw new Error(`Failed to list files (${res.status})`);
-        const fileList = await res.json();
-        const availableFiles = Array.isArray(fileList) ? fileList : [];
-        setFiles(availableFiles);
-        setSelectedFile(availableFiles.length ? availableFiles[0] : "");
-      } catch (err) {
-        setFiles([]);
-        setSelectedFile("");
-        setLoadError(err instanceof Error ? err.message : String(err));
-      } finally {
-        setLoading(false);
-      }
-    };
+    useEffect(() => {
+      const handleKeyDown = (event) => {
+        const target = event.target;
+        const isTypingField =
+          target instanceof HTMLInputElement ||
+          target instanceof HTMLTextAreaElement ||
+          target instanceof HTMLSelectElement ||
+          target?.isContentEditable;
 
-    fetchFiles();
-
-  }, []);
-
-  // =================================================
-  // LOAD QUESTIONS
-  // =================================================
-
-  useEffect(() => {
-
-    if (!selectedFile) return;
-
-    loadQuestions(selectedFile);
-
-  }, [selectedFile]);
-
-  useEffect(() => {
-
-    const handleKeyDown = (event) => {
-
-      const target = event.target;
-      const isTypingField =
-        target instanceof HTMLInputElement ||
-        target instanceof HTMLTextAreaElement ||
-        target instanceof HTMLSelectElement ||
-        target?.isContentEditable;
-
-      if (isTypingField || !quizStarted || !questions.length) {
-        return;
-      }
-
-      if (event.key === "ArrowRight") {
-        event.preventDefault();
-        nextQuestion();
-      }
-
-      if (event.key === "ArrowLeft") {
-        event.preventDefault();
-        prevQuestion();
-      }
-
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-
-    return () => window.removeEventListener("keydown", handleKeyDown);
-
-  }, [quizStarted, questions.length, currentIndex, answeredQuestions]);
-
-  const loadQuestions = async (file) => {
-
-    setLoading(true);
-
-    setLoadError("");
-
-    try {
-
-      const response = await fetch(`/api/questions/${encodeURIComponent(file)}`);
-
-      if (!response.ok) {
-
-        throw new Error(
-          `Failed to load ${file} (${response.status})`
-        );
-
-      }
-
-      const data = await response.json();
-
-      setAllQuestions(Array.isArray(data) ? data : []);
-      setQuestions([]);
-
-      const pages = (Array.isArray(data) ? data : [])
-        .map((item) => item?.page)
-        .filter((page) => Number.isInteger(page));
-
-      const minPage = pages.length ? Math.min(...pages) : 1;
-      const maxPage = pages.length ? Math.max(...pages) : 1;
-
-      setPageStart(minPage);
-      setPageEnd(maxPage);
-      setQuizStarted(false);
-
-      resetExam();
-
-    } catch (error) {
-
-      setQuestions([]);
-
-      setLoadError(
-        error instanceof Error
-          ? error.message
-          : "Failed to load questions"
-      );
-
-    } finally {
-
-      setLoading(false);
-
-    }
-  };
-
-  const startQuiz = () => {
-
-    let filteredQuestions = allQuestions.filter((question) => {
-
-      const page = question?.page;
-
-      return page >= pageStart && page <= pageEnd;
-
-    });
-
-    // If distribute mode is enabled, evenly distribute questions across pages
-    if (distributeQuestions && totalQuestionsWanted > 0) {
-      const numPages = pageEnd - pageStart + 1;
-      const questionsPerPage = Math.floor(totalQuestionsWanted / numPages);
-      const remainder = totalQuestionsWanted % numPages;
-
-      // Group questions by page
-      const questionsByPage = {};
-      for (let i = pageStart; i <= pageEnd; i++) {
-        questionsByPage[i] = allQuestions.filter(q => q?.page === i);
-      }
-
-      // Distribute questions
-      const distributedQuestions = [];
-      let extraQuestionsAdded = 0;
-
-      for (let i = pageStart; i <= pageEnd; i++) {
-        const pageQuestions = questionsByPage[i];
-        const qPerPage = questionsPerPage + (extraQuestionsAdded < remainder ? 1 : 0);
-
-        if (pageQuestions.length < qPerPage) {
-          setLoadError(
-            `Page ${i} has only ${pageQuestions.length} questions, but ${qPerPage} are needed.`
-          );
+        if (isTypingField || !quizStarted || mode !== "quiz") {
           return;
         }
 
-        // Randomly select questions from this page
-        const shuffled = [...pageQuestions].sort(() => Math.random() - 0.5);
-        distributedQuestions.push(...shuffled.slice(0, qPerPage));
-
-        if (extraQuestionsAdded < remainder) {
-          extraQuestionsAdded++;
+        if (event.key === "ArrowRight") {
+          event.preventDefault();
+          nextQuestion();
         }
+
+        if (event.key === "ArrowLeft") {
+          event.preventDefault();
+          prevQuestion();
+        }
+      };
+
+      window.addEventListener("keydown", handleKeyDown);
+      return () => window.removeEventListener("keydown", handleKeyDown);
+    }, [mode, nextQuestion, prevQuestion, quizStarted]);
+
+    useEffect(() => {
+      const handleKeyDown = (event) => {
+        if ((event.ctrlKey || event.metaKey) && event.key === ".") {
+          event.preventDefault();
+          setSecondaryCollapsed((currentValue) => !currentValue);
+        }
+      };
+
+      window.addEventListener("keydown", handleKeyDown);
+      return () => window.removeEventListener("keydown", handleKeyDown);
+    }, []);
+
+    useEffect(() => {
+      if (mode !== "summarize") {
+        return;
       }
 
-      filteredQuestions = distributedQuestions;
-    }
+      const loadSummaryFiles = async () => {
+        setSummaryFilesLoading(true);
+        setSummaryError("");
 
-    if (!filteredQuestions.length) {
+        try {
+          const response = await fetch("/api/summaries");
+          if (!response.ok) {
+            throw new Error(`Failed to list summaries (${response.status})`);
+          }
 
-      setLoadError("No questions found for the selected page range.");
+          const fileList = await response.json();
+          const availableFiles = Array.isArray(fileList) ? fileList : [];
+          setSummaryFiles(availableFiles);
+          setSelectedSummaryFile((currentFile) => {
+            if (currentFile && availableFiles.includes(currentFile)) {
+              return currentFile;
+            }
 
-      return;
-    }
+            return availableFiles[0] || "";
+          });
 
-    setLoadError("");
-    setQuestions(filteredQuestions);
-    setAnsweredQuestions({});
-    setScore(0);
-    setCurrentIndex(0);
-    setQuizStarted(true);
-  };
+          if (!availableFiles.length) {
+            setSummaryContent("");
+          }
+        } catch (error) {
+          setSummaryFiles([]);
+          setSelectedSummaryFile("");
+          setSummaryContent("");
+          setSummaryError(error instanceof Error ? error.message : String(error));
+        } finally {
+          setSummaryFilesLoading(false);
+        }
+      };
 
-  // =================================================
-  // RESET
-  // =================================================
+      loadSummaryFiles();
+    }, [mode]);
 
-  const resetExam = () => {
+    useEffect(() => {
+      if (mode !== "summarize" || !selectedSummaryFile) {
+        setSummaryContent("");
+        return;
+      }
 
-    setCurrentIndex(0);
+      const loadSummaryContent = async () => {
+        setSummaryContentLoading(true);
+        setSummaryError("");
 
-    setAnsweredQuestions({});
+        try {
+          const response = await fetch(`/api/summaries/${encodeURIComponent(selectedSummaryFile)}`);
+          if (!response.ok) {
+            throw new Error(`Failed to load ${selectedSummaryFile} (${response.status})`);
+          }
 
-    setScore(0);
-  };
+          const content = await response.text();
+          setSummaryContent(content);
+        } catch (error) {
+          setSummaryContent("");
+          setSummaryError(error instanceof Error ? error.message : String(error));
+        } finally {
+          setSummaryContentLoading(false);
+        }
+      };
 
-  // =================================================
-  // CURRENT QUESTION
-  // =================================================
+      loadSummaryContent();
+    }, [mode, selectedSummaryFile]);
 
-  const currentQuestion = useMemo(() => {
+    const currentQuestion = questions[currentIndex];
+    const progress = questions.length > 0 ? ((currentIndex + 1) / questions.length) * 100 : 0;
 
-    return questions[currentIndex];
+    const historyChartData = useMemo(() => {
+      if (!quizHistory.length) {
+        return {
+          bars: [],
+          width: 1000,
+          height: 320,
+          padding: { top: 24, right: 28, bottom: 58, left: 52 },
+          yMax: 100,
+        };
+      }
 
-  }, [questions, currentIndex]);
+      const sortedHistory = [...quizHistory].sort((a, b) => (a.id || 0) - (b.id || 0));
+      const uniqueFiles = [...new Set(sortedHistory.map((entry) => entry?.file).filter(Boolean))];
+      const groupedHistory = sortedHistory.reduce((groups, entry, index) => {
+        const pageStartValue = Number(entry?.pageStart) || index + 1;
+        const pageEndValue = Number(entry?.pageEnd) || pageStartValue;
+        const groupKey = `${pageStartValue}-${pageEndValue}`;
 
-  // =================================================
-  // ANSWER CLICK
-  // =================================================
+        if (!groups.has(groupKey)) {
+          groups.set(groupKey, {
+            pageStartValue,
+            pageEndValue,
+            totalPercentage: 0,
+            count: 0,
+          });
+        }
 
-  const handleAnswerClick = (option) => {
+        const group = groups.get(groupKey);
+        const percentageValue = Number(entry?.percentage);
+        const fallbackPercentage = Math.round(((Number(entry?.score) || 0) / Math.max(Number(entry?.totalQuestions) || 1, 1)) * 100);
+        group.totalPercentage += Number.isFinite(percentageValue) ? percentageValue : fallbackPercentage;
+        group.count += 1;
 
-    // Prevent answering if already answered
-    if (answeredQuestions[currentIndex]) return;
+        return groups;
+      }, new Map());
 
-    const newAnswered = { ...answeredQuestions, [currentIndex]: option };
-    setAnsweredQuestions(newAnswered);
+      const width = 1000;
+      const height = 320;
+      const padding = { top: 24, right: 28, bottom: 58, left: 52 };
+      const plotWidth = width - padding.left - padding.right;
+      const plotHeight = height - padding.top - padding.bottom;
+      const yMax = 100;
+      const bars = Array.from(groupedHistory.entries()).map(([groupKey, group], index, entries) => {
+        const barWidth = Math.max(36, Math.min(88, plotWidth / Math.max(entries.length * 1.25, 1)));
+        const slotWidth = plotWidth / Math.max(entries.length, 1);
+        const x = padding.left + slotWidth * index + (slotWidth - barWidth) / 2;
+        const value = Math.max(0, Math.min(100, group.totalPercentage / Math.max(group.count, 1)));
+        const barHeight = (value / yMax) * plotHeight;
 
-    if (option === currentQuestion.answer) {
+        return {
+          key: groupKey,
+          label: `${group.pageStartValue}-${group.pageEndValue}`,
+          avgPercentage: Math.round(value),
+          count: group.count,
+          x,
+          y: padding.top + plotHeight - barHeight,
+          width: barWidth,
+          height: barHeight,
+          centerX: x + barWidth / 2,
+        };
+      });
 
-      setScore(prev => prev + 1);
-    }
-  };
+      return {
+        bars,
+        width,
+        height,
+        yMax,
+        padding,
+        fileSummary:
+          uniqueFiles.length > 3
+            ? `${uniqueFiles.slice(0, 3).join(", ")} +${uniqueFiles.length - 3} more`
+            : uniqueFiles.join(", ") || "Unknown file",
+      };
+    }, [quizHistory]);
 
-  // =================================================
-  // NEXT
-  // =================================================
+    const summaryStats = useMemo(() => {
+      const totalHistoryAttempts = quizHistory.length;
+      const averageScore = totalHistoryAttempts
+        ? Math.round(
+            quizHistory.reduce((sum, entry) => sum + (Number(entry?.percentage) || 0), 0) / totalHistoryAttempts,
+          )
+        : 0;
 
-  const nextQuestion = () => {
+      return {
+        averageScore,
+        totalHistoryAttempts,
+        recentAttempts: [...quizHistory].slice(0, 5),
+        questionCount: allQuestions.length,
+        availableFiles: files.length,
+        currentRange: `${pageStart} - ${pageEnd}`,
+      };
+    }, [allQuestions.length, files.length, pageEnd, pageStart, quizHistory]);
 
-    if (currentIndex < questions.length - 1) {
-
-      setCurrentIndex(prev => prev + 1);
-
-    } else {
-      // Quiz finished - show results
-      saveQuizHistory();
-    }
-  };
-
-  // =================================================
-  // PREVIOUS
-  // =================================================
-
-  const prevQuestion = () => {
-
-    if (currentIndex > 0) {
-
-      setCurrentIndex(prev => prev - 1);
-
-    }
-  };
-
-  // =================================================
-  // SHUFFLE
-  // =================================================
-
-  const shuffleQuestions = () => {
-
-    if (!questions.length) return;
-
-    const shuffled = [...questions].sort(() => Math.random() - 0.5);
-
-    setQuestions(shuffled);
-
-    setCurrentIndex(0);
-
-    setAnsweredQuestions({});
-
-    setScore(0);
-  };
-
-  // =================================================
-  // PROGRESS
-  // =================================================
-
-  const saveQuizHistory = () => {
-    const historyEntry = {
-      id: Date.now(),
-      file: selectedFile,
-      totalQuestions: questions.length,
-      score: score,
-      percentage: Math.round((score / questions.length) * 100),
-      timestamp: new Date().toLocaleString(),
-      answers: answeredQuestions,
-      pageStart: pageStart,
-      pageEnd: pageEnd,
+    const handleSelectPrimary = (section) => {
+      setActiveSection(section);
+      if (section !== "summaries") {
+        setMode("quiz");
+      }
     };
 
-    const updatedHistory = [historyEntry, ...quizHistory];
-    setQuizHistory(updatedHistory);
-    localStorage.setItem("quizHistory", JSON.stringify(updatedHistory));
-    setQuizStarted(false);
-  };
+    const secondaryHeader = {
+      label: `${activeSection} context`,
+      eyebrow: activeSection === "summaries" ? "Summary library" : activeSection === "history" ? "History" : "Question setup",
+      title: activeSection === "summaries" ? "Markdown files" : activeSection === "history" ? "Recent attempts" : "Quiz controls",
+      description:
+        activeSection === "summaries"
+          ? ""
+          : activeSection === "history"
+            ? "Review session history, grouped performance, and recent attempts."
+            : quizStarted
+              ? "Refine the current quiz session without leaving the workspace."
+              : "Set the file, range, and question distribution before starting.",
+      collapseIcon: <PanelLeftClose size={18} />,
+      expandIcon: <PanelLeftOpen size={18} />,
+    };
 
-  const progress =
-    questions.length > 0
-      ? ((currentIndex + 1) / questions.length) * 100
-      : 0;
-
-  const showAnswer = currentIndex in answeredQuestions;
-
-  // =================================================
-  // LOADING
-  // =================================================
-
-  if (loading) {
-
-    return (
-      <div className="loading-state">
-        <div className="loading-card">
-          <div className="spinner" />
-          <h2>Loading questions</h2>
-          <p>Reading the selected JSON file and preparing the quiz setup.</p>
-        </div>
-      </div>
+    const quizSecondaryContent = (
+      <QuizSecondaryContent
+        quizStarted={quizStarted}
+        selectedFile={selectedFile}
+        files={files}
+        setSelectedFile={setSelectedFile}
+        setQuizStarted={setQuizStarted}
+        shuffleQuestions={shuffleQuestions}
+        currentIndex={currentIndex}
+        questions={questions}
+        score={score}
+        progress={progress}
+        quizHistory={quizHistory}
+        historyChartData={historyChartData}
+        showHistoryRecords={showHistoryRecords}
+        setShowHistoryRecords={setShowHistoryRecords}
+        deleteHistoryEntry={deleteHistoryEntry}
+        clearHistory={clearHistory}
+        pageStart={pageStart}
+        pageEnd={pageEnd}
+        setPageStart={setPageStart}
+        setPageEnd={setPageEnd}
+        distributeQuestions={distributeQuestions}
+        setDistributeQuestions={setDistributeQuestions}
+        totalQuestionsWanted={totalQuestionsWanted}
+        setTotalQuestionsWanted={setTotalQuestionsWanted}
+        allQuestions={allQuestions}
+        startQuiz={startQuiz}
+      />
     );
-  }
 
-  if (loadError) {
-
-    return (
-      <div className="loading-state">
-        <div className="loading-card error-card">
-          <h2>Unable to continue</h2>
-          <p>{loadError}</p>
-          <button
-            className="primary-button"
-            onClick={() => loadQuestions(selectedFile)}
-          >
-            Try again
-          </button>
-        </div>
-      </div>
+    const summarySecondaryContent = (
+      <SummarySecondaryContent
+        summaryFilesLoading={summaryFilesLoading}
+        summaryFiles={summaryFiles}
+        selectedSummaryFile={selectedSummaryFile}
+        setSelectedSummaryFile={setSelectedSummaryFile}
+      />
     );
-  }
 
-  if (!quizStarted) {
+    const historySecondaryContent = (
+      <HistorySecondaryContent
+        allQuestions={allQuestions}
+        files={files}
+        historyChartData={historyChartData}
+        quizHistory={quizHistory}
+        showHistoryRecords={showHistoryRecords}
+        deleteHistoryEntry={deleteHistoryEntry}
+        clearHistory={clearHistory}
+      />
+    );
 
-    return (
-      <div className="app-shell landing-shell">
+    const mainWorkspace = (() => {
+      if (loading && activeSection === "quiz") {
+        return (
+          <div className="loading-card">
+            <div className="spinner" />
+            <h2>Loading questions</h2>
+            <p>Reading the selected JSON file and preparing the quiz setup.</p>
+          </div>
+        );
+      }
 
-        <div className="landing-main">
+      if (loadError && activeSection === "quiz") {
+        return (
+          <div className="loading-card error-card">
+            <h2>Unable to continue</h2>
+            <p>{loadError}</p>
+            <button className="primary-button" onClick={() => loadQuestions(selectedFile)}>
+              Try again
+            </button>
+          </div>
+        );
+      }
 
-          <div className="landing-layout">
+      if (activeSection === "summaries") {
+        return (
+          <SummarizePage
+            summaryFiles={summaryFiles}
+            selectedSummaryFile={selectedSummaryFile}
+            summaryContent={summaryContent}
+            summaryFilesLoading={summaryFilesLoading}
+            summaryContentLoading={summaryContentLoading}
+            summaryError={summaryError}
+            onSelectSummaryFile={setSelectedSummaryFile}
+            quizHistory={quizHistory}
+            embedded
+          />
+        );
+      }
 
-            <section className="hero-panel">
-
+      if (activeSection === "history") {
+        return (
+          <div className="workspace-main history-main">
+            <section className="hero-panel landing-hero-panel history-hero-panel">
               <div className="hero-copy">
-
-                <span className="eyebrow">Question setup</span>
-
-                <h1>Choose a file, filter by page range, then start the quiz.</h1>
-
+                <span className="eyebrow">Session overview</span>
+                <h1>Track quiz performance across page ranges and files.</h1>
                 <p>
-                  Load one JSON file at a time, set the page range you want to practice,
-                  and launch a focused MCQ session.
+                  This view keeps the history context in the sidebar while the main stage highlights session trends and
+                  recent activity.
                 </p>
-
               </div>
 
               <div className="hero-stats">
+                <div>
+                  <strong>{summaryStats.averageScore}%</strong>
+                  <span>Average score</span>
+                </div>
 
+                <div>
+                  <strong>{summaryStats.totalHistoryAttempts}</strong>
+                  <span>Total attempts</span>
+                </div>
+
+                <div>
+                  <strong>{summaryStats.questionCount}</strong>
+                  <span>Questions available</span>
+                </div>
+              </div>
+            </section>
+
+            <section className="setup-panel launch-panel">
+              <div className="panel-header">
+                <h2>Recent attempts</h2>
+                <p>Useful for quickly resuming context before a new quiz session.</p>
+              </div>
+
+              <div className="summary-stat-list">
+                <div>
+                  <strong>Range</strong>
+                  <span>{summaryStats.currentRange}</span>
+                </div>
+                <div>
+                  <strong>Files</strong>
+                  <span>{summaryStats.availableFiles}</span>
+                </div>
+              </div>
+
+              {quizHistory.length ? (
+                <div className="summary-recent-list">
+                  {summaryStats.recentAttempts.map((entry) => (
+                    <div key={entry.id} className="summary-recent-item">
+                      <strong>{entry.file}</strong>
+                      <span>{entry.percentage}%</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="summary-empty-state">No history to display yet.</div>
+              )}
+            </section>
+          </div>
+        );
+      }
+
+      if (!quizStarted || !currentQuestion) {
+        return (
+          <div className="workspace-main landing-main">
+            <section className="hero-panel landing-hero-panel">
+              <div className="hero-copy">
+                <span className="eyebrow">Question setup</span>
+                <h1>Choose a file, tune the range, and launch into the quiz workspace.</h1>
+                <p>
+                  The layout now keeps navigation in a primary rail and contextual controls in a secondary panel while the
+                  main stage stays focused on the active task.
+                </p>
+              </div>
+
+              <div className="hero-stats">
                 <div>
                   <strong>{allQuestions.length}</strong>
                   <span>Questions loaded</span>
@@ -441,354 +486,85 @@ function App() {
                   <strong>{files.length}</strong>
                   <span>JSON files</span>
                 </div>
-
               </div>
-
             </section>
 
-            <section className="setup-panel">
-
+            <section className="setup-panel launch-panel">
               <div className="panel-header">
-                <h2>Quiz setup</h2>
-                <p>Select the source file and page range.</p>
+                <h2>Workspace preview</h2>
+                <p>The main area stays focused on the active task, while the sidebar handles setup.</p>
               </div>
 
               <div className="setup-grid">
-
-                <label className="field">
-                  <span>JSON file</span>
-                  <div className="field-control dropdown">
-                    <FileText size={18} />
-                    <select
-                      value={selectedFile}
-                      onChange={(e) => setSelectedFile(e.target.value)}
-                    >
-                      {files.map((file) => (
-                        <option key={file} value={file}>
-                          {file}
-                        </option>
-                      ))}
-                    </select>
+                <div className="summary-stat-list">
+                  <div>
+                    <strong>Range</strong>
+                    <span>{pageStart} to {pageEnd}</span>
                   </div>
-                </label>
+                  <div>
+                    <strong>Mode</strong>
+                    <span>{distributeQuestions ? "Distributed" : "Sequential"}</span>
+                  </div>
+                </div>
 
-                <label className="field">
-                  <span>Start page</span>
-                  <input
-                    className="field-control number-input"
-                    type="number"
-                    min={1}
-                    max={pageEnd}
-                    value={pageStart}
-                    onChange={(e) =>
-                      setPageStart(Math.max(1, Number(e.target.value) || 1))
-                    }
-                  />
-                </label>
-
-                <label className="field">
-                  <span>End page</span>
-                  <input
-                    className="field-control number-input"
-                    type="number"
-                    min={pageStart}
-                    value={pageEnd}
-                    onChange={(e) =>
-                      setPageEnd(Math.max(pageStart, Number(e.target.value) || pageStart))
-                    }
-                  />
-                </label>
-
-                <label className="field checkbox-field">
-                  <input
-                    type="checkbox"
-                    checked={distributeQuestions}
-                    onChange={(e) => setDistributeQuestions(e.target.checked)}
-                  />
-                  <span>Distribute questions evenly</span>
-                </label>
-
-                {distributeQuestions && (
-                  <label className="field">
-                    <span>Total questions needed</span>
-                    <input
-                      className="field-control number-input"
-                      type="number"
-                      min={1}
-                      value={totalQuestionsWanted}
-                      onChange={(e) =>
-                        setTotalQuestionsWanted(Math.max(1, Number(e.target.value) || 1))
-                      }
-                    />
-                  </label>
-                )}
-
+                <div className="summary-empty-state">
+                  When you click Start Quiz, the question workspace takes over the main stage.
+                </div>
               </div>
-
-              <div className="setup-footer">
-
-                <p>
-                  Pages available in file: <strong>1 to {Math.max(pageEnd, pageStart)}</strong>
-                </p>
-
-                <button
-                  className="primary-button"
-                  onClick={startQuiz}
-                  disabled={!allQuestions.length || pageStart > pageEnd}
-                >
-                  Start Quiz
-                </button>
-
-              </div>
-
             </section>
-
           </div>
+        );
+      }
 
-          {quizHistory.length > 0 && (
-            <section className="history-panel">
+      return (
+        <QuizPage
+          selectedFile={selectedFile}
+          files={files}
+          onFileChange={setSelectedFile}
+          onChangeRange={() => setQuizStarted(false)}
+          onShuffle={shuffleQuestions}
+          currentQuestion={currentQuestion}
+          currentIndex={currentIndex}
+          questions={questions}
+          answeredQuestions={answeredQuestions}
+          score={score}
+          progress={progress}
+          showAnswer={currentIndex in answeredQuestions}
+          onPrevQuestion={prevQuestion}
+          onNextQuestion={nextQuestion}
+          onAnswerClick={handleAnswerClick}
+          onDeleteHistoryEntry={deleteHistoryEntry}
+          quizHistory={quizHistory}
+          historyChartData={historyChartData}
+          showHistoryRecords={showHistoryRecords}
+          onToggleHistoryRecords={() => setShowHistoryRecords((prev) => !prev)}
+          onClearHistory={clearHistory}
+          embedded
+        />
+      );
+    })();
 
-              <div className="panel-header">
-                <h2>Quiz History</h2>
-                <p>Your previous quiz attempts</p>
-              </div>
+    const primaryItems = [
+      { key: "quiz", label: "Quiz page", active: activeSection === "quiz", icon: <BookOpen size={20} />, onClick: () => handleSelectPrimary("quiz") },
+      { key: "history", label: "History page", active: activeSection === "history", icon: <Clock3 size={20} />, onClick: () => handleSelectPrimary("history") },
+      { key: "summaries", label: "Summaries", active: activeSection === "summaries", icon: <FileText size={20} />, onClick: () => handleSelectPrimary("summaries") },
+    ];
 
-              <div className="history-list">
-                {quizHistory.map((entry) => (
-                  <div key={entry.id} className="history-item">
-                    <div className="history-info">
-                      <h4>{entry.file}</h4>
-                      <p>{entry.timestamp}</p>
-                      <p className="page-range">Pages {entry.pageStart} - {entry.pageEnd}</p>
-                    </div>
-                    <div className="history-score">
-                      <div className="score-badge">
-                        <strong>{entry.score}/{entry.totalQuestions}</strong>
-                        <span>{entry.percentage}%</span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <button
-                className="ghost-button"
-                onClick={() => {
-                  setQuizHistory([]);
-                  localStorage.removeItem("quizHistory");
-                }}
-              >
-                Clear History
-              </button>
-
-            </section>
-          )}
-
-        </div>
-
-      </div>
-    );
-  }
-
-  if (!currentQuestion) {
+    const secondaryContent =
+      activeSection === "summaries" ? summarySecondaryContent : activeSection === "history" ? historySecondaryContent : quizSecondaryContent;
 
     return (
-      <div className="loading-state">
-        <div className="loading-card">
-          <h2>No questions available</h2>
-          <p>The selected page range did not return any questions.</p>
-        </div>
-      </div>
+      <WorkspaceShell
+        primaryItems={primaryItems}
+        secondaryHeader={secondaryHeader}
+        secondaryContent={secondaryContent}
+        secondaryCollapsed={secondaryCollapsed}
+        onToggleSecondary={() => setSecondaryCollapsed((currentValue) => !currentValue)}
+      >
+        {mainWorkspace}
+      </WorkspaceShell>
     );
-  }
 
-  return (
-    <div className="app-shell quiz-shell">
-
-      <header className="header">
-
-        <div className="logo">
-
-          <BookOpen size={34} />
-
-          <div>
-            {/* <span className="eyebrow">Active quiz</span> */}
-            <h1>MCQ Exam System</h1>
-            <p>{selectedFile}</p>
-          </div>
-
-        </div>
-
-        <div className="controls">
-
-          <div className="dropdown compact-select">
-
-            <FileText size={18} />
-
-            <select
-              value={selectedFile}
-              onChange={(e) => setSelectedFile(e.target.value)}
-            >
-              {files.map((file) => (
-                <option key={file} value={file}>
-                  {file}
-                </option>
-              ))}
-            </select>
-
-          </div>
-
-          <button
-            className="ghost-button"
-            onClick={() => setQuizStarted(false)}
-          >
-            Change Range
-          </button>
-
-          <button
-            className="shuffle-btn"
-            onClick={shuffleQuestions}
-          >
-            <Shuffle size={18} />
-            Shuffle
-          </button>
-
-        </div>
-
-      </header>
-
-      <div className="question-card">
-
-        <div className="card-header-row">
-
-        <div className="meta">
-
-          <span className="badge difficulty">
-            {currentQuestion.difficulty}
-          </span>
-
-          <span className="badge page">
-            Page {currentQuestion.page}
-          </span>
-
-        </div>
-
-        <div className="card-nav" aria-label="Question navigation">
-
-          <button
-            className="nav-icon-button"
-            onClick={prevQuestion}
-            disabled={currentIndex === 0}
-            aria-label="Previous question"
-            title="Previous question"
-          >
-            <ChevronLeft size={20} />
-          </button>
-
-          <button
-            className={`nav-icon-button ${currentIndex === questions.length - 1 ? "finish-btn" : "primary-nav"}`}
-            onClick={nextQuestion}
-            aria-label={currentIndex === questions.length - 1 ? "Finish quiz" : "Next question"}
-            title={currentIndex === questions.length - 1 ? "Finish quiz" : "Next question"}
-          >
-            {currentIndex === questions.length - 1 ? (
-              <Trophy size={20} />
-            ) : (
-              <ChevronRight size={20} />
-            )}
-          </button>
-
-        </div>
-
-        </div>
-
-        <h2 className="question">
-          {currentQuestion.question}
-        </h2>
-
-        <div className={`question-content ${showAnswer ? "show-answer" : ""}`}>
-
-          <div className="options">
-
-            {currentQuestion.options.map((option, index) => {
-
-              const isCorrect = option === currentQuestion.answer;
-
-              const userAnswer = answeredQuestions[currentIndex];
-
-              const isSelected = option === userAnswer;
-
-              const isAnswered = currentIndex in answeredQuestions;
-
-              return (
-                <button
-                  key={index}
-                  className={`option ${isAnswered && isCorrect ? "correct" : ""} ${isAnswered && isSelected && !isCorrect ? "wrong" : ""}`}
-                  onClick={() => handleAnswerClick(option)}
-                  disabled={isAnswered}
-                >
-
-                  <span>{option}</span>
-
-                  {isAnswered && isCorrect && (
-                    <CheckCircle2 size={20} />
-                  )}
-
-                  {isAnswered && isSelected && !isCorrect && (
-                    <XCircle size={20} />
-                  )}
-
-                </button>
-              );
-            })}
-
-          </div>
-
-          {currentIndex in answeredQuestions && (
-
-            <div className="explanation">
-
-              <h3>
-                <Trophy size={18} />
-                Explanation
-              </h3>
-
-              <p>{currentQuestion.explanation}</p>
-
-            </div>
-
-          )}
-
-        </div>
-
-      </div>
-            <div className="progress-wrapper">
-
-        <div className="progress-info">
-
-          <span>
-            Question {currentIndex + 1} / {questions.length}
-          </span>
-
-          <span>
-            Score: {score}
-          </span>
-
-        </div>
-
-        <div className="progress-bar">
-
-          <div
-            className="progress-fill"
-            style={{ width: `${progress}%` }}
-          />
-
-        </div>
-
-      </div>
-
-    </div>
-  );
 }
 
 export default App;

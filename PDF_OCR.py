@@ -2,9 +2,10 @@ import os
 import sys
 import argparse
 import shutil
-from tqdm import tqdm
 from pdf2image import convert_from_path
 import pytesseract
+
+from progress_ui import progress_iter
 
 
 def find_executable_from_env_or_path(env_vars, exe_name=None):
@@ -38,7 +39,7 @@ def ocr_pdf(input_pdf, output_txt, tesseract_cmd=None, poppler_path=None, lang="
     all_text = []
     print(f"Processing {len(pages)} pages with OCR...\n")
 
-    for i, page in enumerate(tqdm(pages, desc="OCR Progress")):
+    for i, page in enumerate(progress_iter(pages, "OCR progress", unit="pages")):
         try:
             text = pytesseract.image_to_string(page, lang=lang)
         except Exception as e:

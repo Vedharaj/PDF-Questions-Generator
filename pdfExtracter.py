@@ -5,7 +5,8 @@ import json
 import io
 from PIL import Image
 import pytesseract
-from tqdm import tqdm
+
+from progress_ui import progress_iter
 
 # Disable PIL decompression bomb protection for large PDF renderings (use with caution)
 Image.MAX_IMAGE_PIXELS = None
@@ -25,7 +26,7 @@ def extract_pdf_to_json(pdf_path, output_dir="output", tess_cmd=None, dpi=300):
 
     all_pages_text = []
 
-    for page_number in tqdm(range(doc.page_count), desc="OCR", unit="page"):
+    for page_number in progress_iter(range(doc.page_count), "Extracting OCR", unit="pages"):
         # print(f"Processing Page {page_number + 1}")
 
         # First try to extract embedded/text-layer PDF text
