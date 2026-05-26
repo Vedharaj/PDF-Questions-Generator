@@ -2,14 +2,22 @@ import os
 import json
 import re
 import time
-import google.generativeai as genai
-from google.api_core.exceptions import ResourceExhausted
 from dotenv import load_dotenv
 
 from progress_ui import progress_iter
+from gemini_utils import GeminiKeyRotator, collect_api_keys
 
 import warnings
-warnings.filterwarnings("ignore", category=FutureWarning)
+
+warnings.filterwarnings(
+    "ignore",
+    message=".*google.generativeai.*"
+)
+
+warnings.filterwarnings(
+    "ignore",
+    message=".*Python version.*"
+)
 
 # Load environment variables from .env file
 load_dotenv()
@@ -19,6 +27,8 @@ load_dotenv()
 # =====================================================
 
 API_KEY = os.getenv("GOOGLE_API_KEY")
+API_KEYS = collect_api_keys(API_KEY)
+API_ROTATOR = GeminiKeyRotator(API_KEYS)
 
 JSON_FILE = os.path.join("output", "OCR_PDF", "Unit-9.json")
 
@@ -31,14 +41,6 @@ DIFFICULTY = "Medium"
 
 OUTPUT_FILE = os.path.join("output", "Questions", JSON_FILE.split("\\")[-1].split(".")[0] + ".json")
 
-# =====================================================
-# CONFIGURE GEMINI
-# =====================================================
-
-genai.configure(api_key=API_KEY)
-
-model = genai.GenerativeModel("gemini-3.1-flash-lite")
-
 # NOTE: JSON loading is done inside `generate_questions` to avoid
 # importing this module from failing when the file doesn't exist.
 
@@ -49,7 +51,7 @@ model = genai.GenerativeModel("gemini-3.1-flash-lite")
 # generate questions for each page separately so we can tag
 # each question with its source `page` number.
 
-def generate_for_page(page_num, page_text, count, difficulty, model):
+def generate_for_page(page_num, page_text, count, difficulty, model_name, api_rotator):
     """Generate `count` questions from `page_text` and return list."""
     page_prompt = f"""
 You are an expert Computer Science exam question generator.
@@ -117,16 +119,20 @@ CONTENT:
         return ''.join(repaired)
 
     for attempt in range(1, max_retries + 1):
-        # print(f"Generating {count} questions for page {page_num} (attempt {attempt})...\n")
         try:
-            resp = model.generate_content(page_prompt)
-        except ResourceExhausted as e:
+            resp = api_rotator.generate_content(
+                page_prompt,
+                model_name,
+                max_attempts=1,
+                error_label=f"Page {page_num}",
+            )
+        except Exception as e:
             last_raw = str(e)
             if attempt < max_retries:
-                print("Rate limit reached. Waiting 60 seconds before retrying...")
-                time.sleep(60)
+                print(f"Retrying page {page_num} after a Gemini failure...")
+                time.sleep(30)
                 continue
-            print(f"❌ Rate limit error for page {page_num} after {max_retries} attempts: {e}")
+            print(f"❌ Failed to generate questions for page {page_num} after {max_retries} attempts: {e}")
             return []
 
         raw = resp.text
@@ -158,11 +164,9 @@ def generate_questions(json_file, start_page, end_page, question_count, difficul
     Appends to `output_file` if it already exists, skipping pages that
     were previously completed, and returns the full saved list of questions.
     """
-    # configure API key if provided
-    if api_key:
-        genai.configure(api_key=api_key)
-
-    model_to_use = model if model_name is None else genai.GenerativeModel(model_name)
+    model_name = model_name or "gemini-3.1-flash-lite"
+    api_keys = collect_api_keys(api_key)
+    api_rotator = GeminiKeyRotator(api_keys)
 
     # Build selected_text as a list of (page_num, text)
     with open(json_file, "r", encoding="utf-8") as f:
@@ -219,7 +223,7 @@ def generate_questions(json_file, start_page, end_page, question_count, difficul
         if count <= 0:
             continue
 
-        page_questions = generate_for_page(page_num, page_text, count, difficulty, model_to_use)
+        page_questions = generate_for_page(page_num, page_text, count, difficulty, model_name, api_rotator)
 
         if not page_questions:
             # Nothing generated for this page (error or empty response); skip writing

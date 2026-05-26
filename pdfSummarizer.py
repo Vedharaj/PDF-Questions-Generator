@@ -7,21 +7,37 @@ and saves the result as a Markdown file under output/summaries/.
 import argparse
 import json
 import os
+import re
 import sys
+import time
 from pathlib import Path
 
-import google.generativeai as genai
 from dotenv import load_dotenv
 
 from progress_ui import progress_iter
+from gemini_utils import GeminiKeyRotator, collect_api_keys
 
 load_dotenv()
+
+import warnings
+
+warnings.filterwarnings(
+    "ignore",
+    message=".*google.generativeai.*"
+)
+
+warnings.filterwarnings(
+    "ignore",
+    message=".*Python version.*"
+)
 
 # =====================================================
 # CONFIGURATION
 # =====================================================
 
 API_KEY = os.getenv("GOOGLE_API_KEY")
+API_KEYS = collect_api_keys(API_KEY)
+API_ROTATOR = GeminiKeyRotator(API_KEYS)
 
 DEFAULT_JSON_FILE = os.path.join("output", "OCR_PDF", "Unit-9.json")
 DEFAULT_START_PAGE = 4
@@ -30,16 +46,6 @@ MODEL_NAME = "gemini-3.1-flash-lite"
 
 OUTPUT_DIR = os.path.join("output", "summaries")
 INPUT_FOLDER = os.path.join("output", "OCR_PDF")
-
-# =====================================================
-# GEMINI CONFIG
-# =====================================================
-
-if API_KEY:
-    genai.configure(api_key=API_KEY)
-    model = genai.GenerativeModel(MODEL_NAME)
-else:
-    model = None
 
 # =====================================================
 # HELPERS
@@ -74,7 +80,7 @@ def load_content_from_json(file_path):
         sys.exit(1)
 
 
-def summarize_page_content(content, page_num):
+def summarize_page_content(content, page_num, api_rotator):
     """Summarize a single page using Gemini."""
     prompt = f"""You are an expert study-material summarizer.
 
@@ -90,11 +96,38 @@ Page {page_num} Content:
 Return only the summary text.
 """
 
-    response = model.generate_content(prompt)
-    return response.text.strip()
+    max_attempts = 3
+    for attempt in range(1, max_attempts + 1):
+        try:
+            response = api_rotator.generate_content(
+                prompt,
+                MODEL_NAME,
+                max_attempts=1,
+                error_label=f"Page {page_num}",
+            )
+            return response.text.strip()
+        except Exception as error:
+            message = str(error)
+            is_retryable_quota_error = (
+                "Please retry in" in message
+                or "retry_delay" in message
+                or "quota" in message.lower()
+                or "rate limit" in message.lower()
+            )
+
+            if not is_retryable_quota_error or attempt == max_attempts:
+                raise
+
+            retry_delay = 60
+            retry_match = re.search(r"Please retry in ([0-9]+(?:\.[0-9]+)?)s", message)
+            if retry_match:
+                retry_delay = max(60, int(float(retry_match.group(1))))
+
+            print(f"\nRate limit reached for page {page_num}. Waiting {retry_delay} seconds before retry {attempt + 1}/{max_attempts}...")
+            time.sleep(retry_delay)
 
 
-def process_pages(json_file, start_page=None, end_page=None):
+def process_pages(json_file, api_rotator, start_page=None, end_page=None):
     """Summarize pages in the selected range and return page-wise results."""
     pages_data = load_content_from_json(json_file)
 
@@ -125,7 +158,7 @@ def process_pages(json_file, start_page=None, end_page=None):
         content = page_data["text"]
 
         # print(f"\nSummarizing page {page_num}...")
-        summary = summarize_page_content(content, page_num)
+        summary = summarize_page_content(content, page_num, api_rotator)
 
         results.append(
             {
@@ -192,7 +225,7 @@ def parse_arguments():
 # =====================================================
 
 if __name__ == "__main__":
-    if not API_KEY:
+    if not API_KEYS:
         print("\nError: GOOGLE_API_KEY is not set")
         sys.exit(1)
 
@@ -202,7 +235,7 @@ if __name__ == "__main__":
         json_path = Path(args.input_file)
         output_file = os.path.join(OUTPUT_DIR, f"{json_path.stem}.md")
 
-        results = process_pages(str(json_path), args.start_page, args.end_page)
+        results = process_pages(str(json_path), API_ROTATOR, args.start_page, args.end_page)
         if results:
             save_summaries_as_markdown(results, output_file)
     else:
@@ -218,6 +251,6 @@ if __name__ == "__main__":
                 print(f"\nSkipping existing file: {output_file}")
                 continue
 
-            results = process_pages(str(json_path))
+            results = process_pages(str(json_path), API_ROTATOR)
             if results:
                 save_summaries_as_markdown(results, output_file)
