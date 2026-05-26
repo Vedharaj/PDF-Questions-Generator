@@ -20,7 +20,7 @@ function SummarySecondaryContent({ summaryFilesLoading, summaryFiles, selectedSu
           ))}
         </div>
       ) : (
-        <div className="summary-empty-state">No markdown files found in output/summaries.</div>
+        <div className="summary-empty-state">No markdown files found in data/summaries.</div>
       )}
     </section>
   );

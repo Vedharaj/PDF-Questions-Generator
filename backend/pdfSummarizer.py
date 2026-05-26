@@ -1,7 +1,7 @@
 """
 Page-wise Content Summarizer using Google Gemini API.
 Reads OCR JSON content page-by-page, summarizes the selected page range,
-and saves the result as a Markdown file under output/summaries/.
+and saves the result as a Markdown file under data/summaries/.
 """
 
 import argparse
@@ -18,6 +18,9 @@ from progress_ui import progress_iter
 from gemini_utils import GeminiKeyRotator, collect_api_keys
 
 load_dotenv()
+
+BACKEND_DIR = Path(__file__).resolve().parent
+DATA_DIR = BACKEND_DIR.parent / "data"
 
 import warnings
 
@@ -39,13 +42,13 @@ API_KEY = os.getenv("GOOGLE_API_KEY")
 API_KEYS = collect_api_keys(API_KEY)
 API_ROTATOR = GeminiKeyRotator(API_KEYS)
 
-DEFAULT_JSON_FILE = os.path.join("output", "OCR_PDF", "Unit-9.json")
+DEFAULT_JSON_FILE = DATA_DIR / "OCR_PDF" / "Unit-9.json"
 DEFAULT_START_PAGE = 4
 DEFAULT_END_PAGE = 5
-MODEL_NAME = "gemini-3.1-flash-lite"
+from gemini_utils import MODEL_NAME
 
-OUTPUT_DIR = os.path.join("output", "summaries")
-INPUT_FOLDER = os.path.join("output", "OCR_PDF")
+OUTPUT_DIR = DATA_DIR / "summaries"
+INPUT_FOLDER = DATA_DIR / "OCR_PDF"
 
 # =====================================================
 # HELPERS

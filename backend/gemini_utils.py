@@ -8,6 +8,13 @@ import time
 from typing import List, Sequence
 
 import google.generativeai as genai
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
+
+# Centralized default model name for all scripts. Can be overridden via env `MODEL_NAME`.
+MODEL_NAME = os.getenv("MODEL_NAME", "gemini-3.1-flash-lite")
 
 
 def collect_api_keys(*candidates: str | None) -> List[str]:

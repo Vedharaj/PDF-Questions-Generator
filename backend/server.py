@@ -1,10 +1,14 @@
 from flask import Flask, jsonify, send_from_directory, abort, Response
 from flask_cors import CORS
 import os
+from pathlib import Path
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-QUESTIONS_DIR = os.path.join(BASE_DIR, "output", "Questions")
-SUMMARIES_DIR = os.path.join(BASE_DIR, "output", "summaries")
+BACKEND_DIR = Path(__file__).resolve().parent
+DATA_DIR = BACKEND_DIR.parent / "data"
+QUESTIONS_DIR = DATA_DIR / "Questions"
+SUMMARIES_DIR = DATA_DIR / "summaries"
+FLASHCARDS_DIR = DATA_DIR / "Flashcards"
+MAPPING_DIR = DATA_DIR / "mappingTree"
 
 app = Flask(__name__)
 CORS(app)
@@ -12,11 +16,11 @@ CORS(app)
 
 @app.route("/api/files", methods=["GET"])
 def list_files():
-    """Return a JSON list of available .json files in the Questions folder."""
+    """Return a JSON list of available question file names without extension."""
     if not os.path.isdir(QUESTIONS_DIR):
         return jsonify([])
 
-    files = [f for f in os.listdir(QUESTIONS_DIR) if f.lower().endswith('.json')]
+    files = [os.path.splitext(f)[0] for f in os.listdir(QUESTIONS_DIR) if f.lower().endswith('.json')]
     files.sort()
     return jsonify(files)
 
@@ -28,7 +32,7 @@ def get_question_file(filename):
     Security: only serve files that exist in the QUESTIONS_DIR and end with .json.
     """
     if not filename.lower().endswith('.json'):
-        abort(400, "Only .json files are allowed")
+        filename = f"{filename}.json"
 
     # Prevent directory traversal by resolving the real path and checking prefix
     requested_path = os.path.realpath(os.path.join(QUESTIONS_DIR, filename))
@@ -50,6 +54,63 @@ def list_summary_files():
     files = [f for f in os.listdir(SUMMARIES_DIR) if f.lower().endswith('.md')]
     files.sort()
     return jsonify(files)
+
+
+@app.route("/api/flashcards", methods=["GET"])
+def list_flashcard_files():
+    """Return a JSON list of available flashcard file names without extension."""
+    if not os.path.isdir(FLASHCARDS_DIR):
+        return jsonify([])
+
+    files = [os.path.splitext(f)[0] for f in os.listdir(FLASHCARDS_DIR) if f.lower().endswith('.json')]
+    files.sort()
+    return jsonify(files)
+
+
+@app.route("/api/flashcards/<path:filename>", methods=["GET"])
+def get_flashcard_file(filename):
+    """Serve a JSON flashcard file from the Flashcards folder.
+
+    Security: only serve files that exist in the FLASHCARDS_DIR and end with .json.
+    """
+    if not filename.lower().endswith('.json'):
+        filename = f"{filename}.json"
+
+    requested_path = os.path.realpath(os.path.join(FLASHCARDS_DIR, filename))
+    if not requested_path.startswith(os.path.realpath(FLASHCARDS_DIR) + os.sep):
+        abort(403)
+
+    if not os.path.exists(requested_path):
+        abort(404)
+
+    return send_from_directory(FLASHCARDS_DIR, filename)
+
+
+@app.route("/api/mappings", methods=["GET"])
+def list_mapping_files():
+    """Return a JSON list of available mapping JSON file names without extension."""
+    if not os.path.isdir(MAPPING_DIR):
+        return jsonify([])
+
+    files = [os.path.splitext(f)[0] for f in os.listdir(MAPPING_DIR) if f.lower().endswith('.json')]
+    files.sort()
+    return jsonify(files)
+
+
+@app.route("/api/mappings/<path:filename>", methods=["GET"])
+def get_mapping_file(filename):
+    """Serve a JSON mapping file from the mappingTree folder with traversal protection."""
+    if not filename.lower().endswith('.json'):
+        filename = f"{filename}.json"
+
+    requested_path = os.path.realpath(os.path.join(MAPPING_DIR, filename))
+    if not requested_path.startswith(os.path.realpath(MAPPING_DIR) + os.sep):
+        abort(403)
+
+    if not os.path.exists(requested_path):
+        abort(404)
+
+    return send_from_directory(MAPPING_DIR, filename)
 
 
 @app.route("/api/summaries/<path:filename>", methods=["GET"])

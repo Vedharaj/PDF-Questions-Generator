@@ -73,8 +73,8 @@ logs/
 *.temp
 .cache/
 
-# Generated output (if you want to ignore generated questions)
-# output/
+# Generated data (if you want to ignore generated questions)
+# data/
 
 # Misc
 .pytest_cache/
@@ -83,4 +83,4 @@ htmlcov/
 *.json
 poppler-26.05.0/
 *.pdf
-output/summaries/*.md
+data/summaries/*.md

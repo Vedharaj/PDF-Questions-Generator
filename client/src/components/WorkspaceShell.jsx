@@ -44,7 +44,6 @@ function WorkspaceShell({
             <div>
               <span className="eyebrow">{secondaryHeader.eyebrow}</span>
               <h2>{secondaryHeader.title}</h2>
-              {secondaryHeader.description ? <p>{secondaryHeader.description}</p> : null}
             </div>
 
             <button

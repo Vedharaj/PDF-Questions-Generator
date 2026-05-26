@@ -77,7 +77,7 @@ PDF Questions Generation/
 │   ├── eslint.config.js       # ESLint configuration
 │   └── index.html             # HTML template
 │
-└── output/                    # Generated files (not committed)
+└── data/                      # Generated files (not committed)
     ├── OCR_PDF/               # Extracted text from PDFs (JSON)
     └── Questions/             # Generated questions (JSON)
 ```
@@ -230,7 +230,7 @@ python main.py path/to/document.pdf [start_page] [end_page]
 python main.py lectures/Unit-9.pdf 1 50
 ```
 
-This creates: `output/OCR_PDF/Unit-9.json`
+This creates: `data/OCR_PDF/Unit-9.json`
 
 **Output Format**:
 ```json
@@ -477,15 +477,15 @@ python server.py
 **Cause**: Selected page range has no questions
 **Solution**:
 - Regenerate questions with correct page range
-- Verify output files exist in `output/Questions/`
+- Verify output files exist in `data/Questions/`
 - Check Questions JSON format
 
 #### 7. File upload errors
 **Cause**: Missing output directory
 **Solution**:
 ```bash
-mkdir -p output/OCR_PDF
-mkdir -p output/Questions
+mkdir -p data/OCR_PDF
+mkdir -p data/Questions
 ```
 
 ---

@@ -2,6 +2,8 @@ import { FileText, Shuffle, Trash2 } from "lucide-react";
 
 function QuizSecondaryContent({
   quizStarted,
+  contentMode,
+  setContentMode,
   selectedFile,
   files,
   setSelectedFile,
@@ -34,6 +36,26 @@ function QuizSecondaryContent({
         <section>
 
           <div className="stacked-controls">
+            <div className="mode-switch sidebar-mode-switch" role="tablist" aria-label="Quiz content mode">
+              <button
+                type="button"
+                className={`mode-switch-button ${contentMode === "mcq" ? "active" : ""}`}
+                onClick={() => setContentMode("mcq")}
+                aria-pressed={contentMode === "mcq"}
+              >
+                MCQ
+              </button>
+
+              <button
+                type="button"
+                className={`mode-switch-button ${contentMode === "flashcard" ? "active" : ""}`}
+                onClick={() => setContentMode("flashcard")}
+                aria-pressed={contentMode === "flashcard"}
+              >
+                Flashcards
+              </button>
+            </div>
+
             <label className="field">
               <span>JSON file</span>
               <div className="field-control dropdown">
@@ -78,8 +100,27 @@ function QuizSecondaryContent({
 
   return (
     <section>
-      <h3>Source and range</h3>
       <div className="stacked-controls">
+        <div className="mode-switch sidebar-mode-switch" role="tablist" aria-label="Quiz content mode">
+          <button
+            type="button"
+            className={`mode-switch-button ${contentMode === "mcq" ? "active" : ""}`}
+            onClick={() => setContentMode("mcq")}
+            aria-pressed={contentMode === "mcq"}
+          >
+            MCQ
+          </button>
+
+          <button
+            type="button"
+            className={`mode-switch-button ${contentMode === "flashcard" ? "active" : ""}`}
+            onClick={() => setContentMode("flashcard")}
+            aria-pressed={contentMode === "flashcard"}
+          >
+            Flashcards
+          </button>
+        </div>
+
         <label className="field">
           <span>JSON file</span>
           <div className="field-control dropdown">

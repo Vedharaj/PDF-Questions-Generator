@@ -3,15 +3,21 @@ import os
 import sys
 import json
 import io
+from pathlib import Path
 from PIL import Image
 import pytesseract
 
 from progress_ui import progress_iter
 
+
+BACKEND_DIR = Path(__file__).resolve().parent
+DATA_DIR = BACKEND_DIR.parent / "data"
+DEFAULT_OUTPUT_DIR = DATA_DIR / "OCR_PDF"
+
 # Disable PIL decompression bomb protection for large PDF renderings (use with caution)
 Image.MAX_IMAGE_PIXELS = None
 
-def extract_pdf_to_json(pdf_path, output_dir="output", tess_cmd=None, dpi=300):
+def extract_pdf_to_json(pdf_path, output_dir=DEFAULT_OUTPUT_DIR, tess_cmd=None, dpi=300):
     """Render each page of `pdf_path` and OCR text with Tesseract.
 
     Returns the path to the saved JSON file.
@@ -84,4 +90,4 @@ if __name__ == "__main__":
         raise ValueError(
         "TESSERACT_CMD environment variable not set"
     )
-    extract_pdf_to_json(PDF_PATH, output_dir="output/OCR_PDF", tess_cmd=tesseract_path)
+    extract_pdf_to_json(PDF_PATH, output_dir=DEFAULT_OUTPUT_DIR, tess_cmd=tesseract_path)

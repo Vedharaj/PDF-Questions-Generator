@@ -1,6 +1,7 @@
 import { create } from "zustand";
 
 const shuffleArray = (items) => [...items].sort(() => Math.random() - 0.5);
+const getItemPage = (item) => Number(item?.page ?? item?.page_number ?? 0);
 
 const readSavedHistory = () => {
   if (typeof window === "undefined") {
@@ -31,8 +32,11 @@ const persistHistory = (history) => {
 
 export const useQuizStore = create((set, get) => ({
   mode: "quiz",
+  contentMode: "mcq",
   files: [],
   selectedFile: "",
+  selectedMcqFile: "",
+  selectedFlashcardFile: "",
   allQuestions: [],
   questions: [],
   loading: false,
@@ -49,7 +53,27 @@ export const useQuizStore = create((set, get) => ({
   showHistoryRecords: true,
 
   setMode: (mode) => set({ mode }),
-  setSelectedFile: (selectedFile) => set({ selectedFile }),
+  setContentMode: (contentMode) =>
+    set((state) => ({
+      contentMode,
+      selectedFile:
+        contentMode === "flashcard"
+          ? state.selectedFlashcardFile || ""
+          : state.selectedMcqFile || "",
+      quizStarted: false,
+      currentIndex: 0,
+      answeredQuestions: {},
+      score: 0,
+      loadError: "",
+      questions: [],
+    })),
+  setSelectedFile: (selectedFile) =>
+    set((state) => ({
+      selectedFile,
+      selectedMcqFile: state.contentMode === "mcq" ? selectedFile : state.selectedMcqFile,
+      selectedFlashcardFile:
+        state.contentMode === "flashcard" ? selectedFile : state.selectedFlashcardFile,
+    })),
   setPageStart: (pageStart) => set({ pageStart }),
   setPageEnd: (pageEnd) => set({ pageEnd }),
   setTotalQuestionsWanted: (totalQuestionsWanted) => set({ totalQuestionsWanted }),
@@ -75,16 +99,19 @@ export const useQuizStore = create((set, get) => ({
     set({ loading: true, loadError: "" });
 
     try {
-      const response = await fetch("/api/files");
+      const { contentMode } = get();
+      const endpoint = contentMode === "flashcard" ? "/api/flashcards" : "/api/files";
+      const response = await fetch(endpoint);
       if (!response.ok) {
         throw new Error(`Failed to list files (${response.status})`);
       }
 
       const fileList = await response.json();
       const availableFiles = Array.isArray(fileList) ? fileList : [];
+      const rememberedFile = contentMode === "flashcard" ? get().selectedFlashcardFile : get().selectedMcqFile;
       set({
         files: availableFiles,
-        selectedFile: availableFiles.length ? availableFiles[0] : "",
+        selectedFile: availableFiles.includes(rememberedFile) ? rememberedFile : availableFiles[0] || "",
       });
     } catch (error) {
       set({
@@ -105,7 +132,9 @@ export const useQuizStore = create((set, get) => ({
     set({ loading: true, loadError: "" });
 
     try {
-      const response = await fetch(`/api/questions/${encodeURIComponent(file)}`);
+      const { contentMode } = get();
+      const endpoint = contentMode === "flashcard" ? "/api/flashcards" : "/api/questions";
+      const response = await fetch(`${endpoint}/${encodeURIComponent(file)}`);
       if (!response.ok) {
         throw new Error(`Failed to load ${file} (${response.status})`);
       }
@@ -113,7 +142,7 @@ export const useQuizStore = create((set, get) => ({
       const data = await response.json();
       const allQuestions = Array.isArray(data) ? data : [];
       const pages = allQuestions
-        .map((item) => item?.page)
+        .map((item) => getItemPage(item))
         .filter((page) => Number.isInteger(page));
 
       const minPage = pages.length ? Math.min(...pages) : 1;
@@ -142,7 +171,7 @@ export const useQuizStore = create((set, get) => ({
     const { allQuestions, pageStart, pageEnd, distributeQuestions, totalQuestionsWanted } = get();
 
     let filteredQuestions = allQuestions.filter((question) => {
-      const page = question?.page;
+      const page = getItemPage(question);
       return page >= pageStart && page <= pageEnd;
     });
 
@@ -153,7 +182,7 @@ export const useQuizStore = create((set, get) => ({
       const questionsByPage = {};
 
       for (let page = pageStart; page <= pageEnd; page += 1) {
-        questionsByPage[page] = allQuestions.filter((question) => question?.page === page);
+        questionsByPage[page] = allQuestions.filter((question) => getItemPage(question) === page);
       }
 
       const distributedQuestions = [];
@@ -214,10 +243,15 @@ export const useQuizStore = create((set, get) => ({
   },
 
   nextQuestion: () => {
-    const { currentIndex, questions } = get();
+    const { currentIndex, questions, contentMode } = get();
 
     if (currentIndex < questions.length - 1) {
       set({ currentIndex: currentIndex + 1 });
+      return;
+    }
+
+    if (contentMode === "flashcard") {
+      set({ quizStarted: false });
       return;
     }
 

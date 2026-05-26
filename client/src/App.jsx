@@ -1,15 +1,17 @@
-import { useEffect, useMemo, useState } from "react";
+import { act, useEffect, useMemo, useState } from "react";
 
-import { BookOpen, Clock3, FileText, PanelLeftClose, PanelLeftOpen, Trash2 } from "lucide-react";
+import { BookOpen, Clock3, FileText, PanelLeftClose, PanelLeftOpen, Trash2, Network } from "lucide-react";
 
 import HistorySecondaryContent from "./components/HistorySecondaryContent";
 import QuizSecondaryContent from "./components/QuizSecondaryContent";
 import SummarySecondaryContent from "./components/SummarySecondaryContent";
-import HistoryPage from "./components/HistoryPage";
-import SummariesPage from "./components/SummariesPage";
+import MappingSecondaryContent from "./components/MappingSecondaryContent";
+import MappingActiveContent from "./components/MappingActiveContent";
+import HistoryPage from "./pages/HistoryPage";
 import QuizPage from "./pages/QuizPage";
+import FlashcardPage from "./pages/FlashcardPage";
 import SummarizePage from "./pages/SummarizePage";
-import WorkspaceShell from "./WorkspaceShell";
+import WorkspaceShell from "./components/WorkspaceShell";
 import { useQuizStore } from "./store/useQuizStore";
 
 import "./App.css";
@@ -24,9 +26,16 @@ function App() {
   const [summaryFilesLoading, setSummaryFilesLoading] = useState(false);
   const [summaryContentLoading, setSummaryContentLoading] = useState(false);
   const [summaryError, setSummaryError] = useState("");
+  const [mappingFiles, setMappingFiles] = useState([]);
+  const [selectedMappingFile, setSelectedMappingFile] = useState("");
+  const [mappingContent, setMappingContent] = useState(null);
+  const [mappingFilesLoading, setMappingFilesLoading] = useState(false);
+  const [mappingContentLoading, setMappingContentLoading] = useState(false);
+  const [mappingError, setMappingError] = useState("");
   const [selectedHistoryQuestionCount, setSelectedHistoryQuestionCount] = useState(null);
 
   const mode = useQuizStore((state) => state.mode);
+  const contentMode = useQuizStore((state) => state.contentMode);
   const files = useQuizStore((state) => state.files);
   const selectedFile = useQuizStore((state) => state.selectedFile);
   const allQuestions = useQuizStore((state) => state.allQuestions);
@@ -45,6 +54,7 @@ function App() {
   const showHistoryRecords = useQuizStore((state) => state.showHistoryRecords);
 
   const setMode = useQuizStore((state) => state.setMode);
+  const setContentMode = useQuizStore((state) => state.setContentMode);
   const setSelectedFile = useQuizStore((state) => state.setSelectedFile);
   const setPageStart = useQuizStore((state) => state.setPageStart);
   const setPageEnd = useQuizStore((state) => state.setPageEnd);
@@ -64,10 +74,12 @@ function App() {
 
   useEffect(() => {
     loadFiles();
-  }, [loadFiles]);
+  }, [contentMode, loadFiles]);
 
   useEffect(() => {
-    setMode(activeSection === "summaries" ? "summarize" : "quiz");
+    setMode(
+      activeSection === "summaries" ? "summarize" : activeSection === "mappingTree" ? "mappingTree" : "quiz"
+    );
   }, [activeSection, setMode]);
 
   useEffect(() => {
@@ -185,6 +197,75 @@ function App() {
 
     loadSummaryFiles();
   }, [mode]);
+
+  useEffect(() => {
+    if (activeSection !== "mappingTree") return;
+
+    const loadMappingFiles = async () => {
+      setMappingFilesLoading(true);
+      setMappingError("");
+
+      try {
+        const response = await fetch("/api/mappings");
+        if (!response.ok) {
+          throw new Error(`Failed to list mappings (${response.status})`);
+        }
+
+        const fileList = await response.json();
+        const availableFiles = Array.isArray(fileList) ? fileList : [];
+        setMappingFiles(availableFiles);
+        setSelectedMappingFile((currentFile) => {
+          if (currentFile && availableFiles.includes(currentFile)) {
+            return currentFile;
+          }
+
+          return availableFiles[0] || "";
+        });
+
+        if (!availableFiles.length) {
+          setMappingContent(null);
+        }
+      } catch (error) {
+        setMappingFiles([]);
+        setSelectedMappingFile("");
+        setMappingContent(null);
+        setMappingError(error instanceof Error ? error.message : String(error));
+      } finally {
+        setMappingFilesLoading(false);
+      }
+    };
+
+    loadMappingFiles();
+  }, [activeSection]);
+
+  useEffect(() => {
+    if (activeSection !== "mappingTree" || !selectedMappingFile) {
+      setMappingContent(null);
+      return;
+    }
+
+    const loadMappingContent = async () => {
+      setMappingContentLoading(true);
+      setMappingError("");
+
+      try {
+        const response = await fetch(`/api/mappings/${encodeURIComponent(selectedMappingFile)}`);
+        if (!response.ok) {
+          throw new Error(`Failed to load ${selectedMappingFile} (${response.status})`);
+        }
+
+        const data = await response.json();
+        setMappingContent(data);
+      } catch (error) {
+        setMappingContent(null);
+        setMappingError(error instanceof Error ? error.message : String(error));
+      } finally {
+        setMappingContentLoading(false);
+      }
+    };
+
+    loadMappingContent();
+  }, [activeSection, selectedMappingFile]);
 
   useEffect(() => {
     if (mode !== "summarize" || !selectedSummaryFile) {
@@ -315,8 +396,9 @@ function App() {
       questionCount: selectedHistoryQuestionCount !== null ? selectedHistoryQuestionCount : allQuestions.length,
       availableFiles: selectedHistoryFile ? 1 : files.length,
       currentRange: `${pageStart} - ${pageEnd}`,
+      currentMode: contentMode === "flashcard" ? "Flashcards" : "MCQ",
     };
-  }, [allQuestions.length, files.length, pageEnd, pageStart, quizHistory, selectedHistoryFile]);
+  }, [allQuestions.length, contentMode, files.length, pageEnd, pageStart, quizHistory, selectedHistoryFile]);
 
   const handleSelectPrimary = (section) => {
     setActiveSection(section);
@@ -327,8 +409,28 @@ function App() {
 
   const secondaryHeader = {
     label: `${activeSection} context`,
-    eyebrow: activeSection === "summaries" ? "Summary library" : activeSection === "history" ? "History" : "Question setup",
-    title: activeSection === "summaries" ? "Markdown files" : activeSection === "history" ? "JSON files" : "Quiz controls",
+    eyebrow:
+      activeSection === "summaries"
+        ? "Summary library"
+        : activeSection === "history"
+          ? "History"
+          : activeSection === "mappingTree"
+            ? "Mapping Tree"
+            : "Question setup",
+    title:
+      activeSection === "summaries"
+        ? "Markdown files"
+        : activeSection === "history"
+          ? "JSON files"
+          : activeSection === "mappingTree"
+            ? "Topics"
+            : quizStarted
+              ? contentMode === "flashcard"
+                ? "Current flashcard session"
+                : "Current quiz session"
+              : contentMode === "flashcard"
+                ? "Flashcard configuration"
+                : "Quiz configuration",
     description:
       activeSection === "summaries"
         ? ""
@@ -336,7 +438,7 @@ function App() {
           ? ""
           : quizStarted
             ? "Refine the current quiz session without leaving the workspace."
-            : "Set the file, range, and question distribution before starting.",
+            : "",
     collapseIcon: <PanelLeftClose size={18} />,
     expandIcon: <PanelLeftOpen size={18} />,
   };
@@ -344,6 +446,8 @@ function App() {
   const quizSecondaryContent = (
     <QuizSecondaryContent
       quizStarted={quizStarted}
+        contentMode={contentMode}
+        setContentMode={setContentMode}
       selectedFile={selectedFile}
       files={files}
       setSelectedFile={setSelectedFile}
@@ -378,6 +482,15 @@ function App() {
       summaryFiles={summaryFiles}
       selectedSummaryFile={selectedSummaryFile}
       setSelectedSummaryFile={setSelectedSummaryFile}
+    />
+  );
+
+  const mappingSecondaryContent = (
+    <MappingSecondaryContent
+      mappingFilesLoading={mappingFilesLoading}
+      mappingFiles={mappingFiles}
+      selectedMappingFile={selectedMappingFile}
+      setSelectedMappingFile={setSelectedMappingFile}
     />
   );
 
@@ -450,7 +563,7 @@ function App() {
 
     if (activeSection === "summaries") {
       return (
-        <SummariesPage
+        <SummarizePage
           summaryFiles={summaryFiles}
           selectedSummaryFile={selectedSummaryFile}
           summaryContent={summaryContent}
@@ -460,6 +573,30 @@ function App() {
           onSelectSummaryFile={setSelectedSummaryFile}
           quizHistory={quizHistory}
           embedded
+        />
+      );
+    }
+
+    if (activeSection === "mappingTree") {
+      if (mappingContentLoading) {
+        return <MappingActiveContent mappingContentLoading={mappingContentLoading} />;
+      }
+
+      if (mappingError) {
+        return (
+          <MappingActiveContent
+            mappingError={mappingError}
+            onRetry={() => setSelectedMappingFile(selectedMappingFile)}
+          />
+        );
+      }
+      return (
+        <MappingActiveContent
+          mappingContent={mappingContent}
+          mappingContentLoading={mappingContentLoading}
+          mappingError={mappingError}
+          selectedMappingFile={selectedMappingFile}
+          onRetry={() => setSelectedMappingFile(selectedMappingFile)}
         />
       );
     }
@@ -476,6 +613,10 @@ function App() {
           clearHistory={clearHistory}
         />
       );
+    }
+
+    if (quizStarted && contentMode === "flashcard") {
+      return <FlashcardPage apiUrl={`/api/flashcards/${encodeURIComponent(selectedFile)}`} embedded />;
     }
 
     if (!quizStarted || !currentQuestion) {
@@ -523,7 +664,7 @@ function App() {
                 </div>
                 <div>
                   <strong>Mode</strong>
-                  <span>{distributeQuestions ? "Distributed" : "Sequential"}</span>
+                  <span>{summaryStats.currentMode}</span>
                 </div>
               </div>
 
@@ -568,10 +709,17 @@ function App() {
     { key: "quiz", label: "Quiz page", active: activeSection === "quiz", icon: <BookOpen size={20} />, onClick: () => handleSelectPrimary("quiz") },
     { key: "history", label: "History page", active: activeSection === "history", icon: <Clock3 size={20} />, onClick: () => handleSelectPrimary("history") },
     { key: "summaries", label: "Summaries", active: activeSection === "summaries", icon: <FileText size={20} />, onClick: () => handleSelectPrimary("summaries") },
+    { key: "mappingTree", label: "Mapping Tree", active: activeSection === "mappingTree", icon: <Network size={20} />, onClick: () => handleSelectPrimary("mappingTree") },
   ];
 
   const secondaryContent =
-    activeSection === "summaries" ? summarySecondaryContent : activeSection === "history" ? historySecondaryContent : quizSecondaryContent;
+    activeSection === "summaries"
+      ? summarySecondaryContent
+      : activeSection === "history"
+      ? historySecondaryContent
+      : activeSection === "mappingTree"
+      ? mappingSecondaryContent
+      : quizSecondaryContent;
 
   return (
     <WorkspaceShell

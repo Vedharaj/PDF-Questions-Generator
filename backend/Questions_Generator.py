@@ -5,7 +5,7 @@ import time
 from dotenv import load_dotenv
 
 from progress_ui import progress_iter
-from gemini_utils import GeminiKeyRotator, collect_api_keys
+from gemini_utils import GeminiKeyRotator, collect_api_keys, MODEL_NAME
 
 import warnings
 
@@ -22,6 +22,9 @@ warnings.filterwarnings(
 # Load environment variables from .env file
 load_dotenv()
 
+BACKEND_DIR = Path(__file__).resolve().parent
+DATA_DIR = BACKEND_DIR.parent / "data"
+
 # =====================================================
 # CONFIGURATION
 # =====================================================
@@ -30,7 +33,7 @@ API_KEY = os.getenv("GOOGLE_API_KEY")
 API_KEYS = collect_api_keys(API_KEY)
 API_ROTATOR = GeminiKeyRotator(API_KEYS)
 
-JSON_FILE = os.path.join("output", "OCR_PDF", "Unit-9.json")
+JSON_FILE = DATA_DIR / "OCR_PDF" / "Unit-9.json"
 
 START_PAGE = 4
 END_PAGE = 5
@@ -39,7 +42,7 @@ QUESTION_COUNT = 10
 
 DIFFICULTY = "Medium"
 
-OUTPUT_FILE = os.path.join("output", "Questions", JSON_FILE.split("\\")[-1].split(".")[0] + ".json")
+OUTPUT_FILE = DATA_DIR / "Questions" / f"{JSON_FILE.stem}.json"
 
 # NOTE: JSON loading is done inside `generate_questions` to avoid
 # importing this module from failing when the file doesn't exist.
@@ -164,7 +167,7 @@ def generate_questions(json_file, start_page, end_page, question_count, difficul
     Appends to `output_file` if it already exists, skipping pages that
     were previously completed, and returns the full saved list of questions.
     """
-    model_name = model_name or "gemini-3.1-flash-lite"
+    model_name = model_name or MODEL_NAME
     api_keys = collect_api_keys(api_key)
     api_rotator = GeminiKeyRotator(api_keys)
 

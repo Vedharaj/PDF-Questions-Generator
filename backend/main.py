@@ -7,6 +7,10 @@ from pdfExtracter import extract_pdf_to_json
 from Questions_Generator import generate_questions
 
 
+BACKEND_DIR = Path(__file__).resolve().parent
+DATA_DIR = BACKEND_DIR.parent / "data"
+
+
 def main():
     if len(sys.argv) < 2:
         print("Usage: python main.py <path_to_pdf> [start_page] [end_page] [question_count] [difficulty]")
@@ -21,23 +25,23 @@ def main():
     base = Path(pdf_path).stem
 
     # Step 1: OCR extract to OCR_PDF/<base>.json
-    ocr_dir = os.path.join("output", "OCR_PDF")
-    os.makedirs(ocr_dir, exist_ok=True)
-    ocr_json = os.path.join(ocr_dir, base + ".json")
+    ocr_dir = DATA_DIR / "OCR_PDF"
+    ocr_dir.mkdir(parents=True, exist_ok=True)
+    ocr_json = ocr_dir / f"{base}.json"
 
-    if os.path.exists(ocr_json):
+    if ocr_json.exists():
         print(f"OCR output already exists at {ocr_json}; skipping OCR extraction.")
     else:
         # Pass TESSERACT_CMD environment variable to extractor if present
         tesseract_path = os.environ.get("TESSERACT_CMD")
         returned_dir = extract_pdf_to_json(pdf_path, output_dir=ocr_dir, tess_cmd=tesseract_path)
         # extract_pdf_to_json now returns the directory containing the OCR JSON
-        ocr_json = os.path.join(returned_dir, base + ".json")
+        ocr_json = Path(returned_dir) / f"{base}.json"
 
     # Step 2: Generate questions from OCR JSON and save to Questions/<base>.json
-    questions_dir = os.path.join("output", "Questions")
-    os.makedirs(questions_dir, exist_ok=True)
-    questions_out = os.path.join(questions_dir, base + ".json")
+    questions_dir = DATA_DIR / "Questions"
+    questions_dir.mkdir(parents=True, exist_ok=True)
+    questions_out = questions_dir / f"{base}.json"
 
     # Read OCR JSON and determine available page range
     with open(ocr_json, "r", encoding="utf-8") as f:
