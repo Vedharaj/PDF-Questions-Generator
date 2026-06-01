@@ -51,7 +51,7 @@ def list_summary_files():
     if not os.path.isdir(SUMMARIES_DIR):
         return jsonify([])
 
-    files = [f for f in os.listdir(SUMMARIES_DIR) if f.lower().endswith('.md')]
+    files = [os.path.splitext(f)[0] for f in os.listdir(SUMMARIES_DIR) if f.lower().endswith('.md')]
     files.sort()
     return jsonify(files)
 
@@ -117,7 +117,7 @@ def get_mapping_file(filename):
 def get_summary_file(filename):
     """Return the content of a Markdown summary file."""
     if not filename.lower().endswith('.md'):
-        abort(400, "Only .md files are allowed")
+        filename = f"{filename}.md"
 
     requested_path = os.path.realpath(os.path.join(SUMMARIES_DIR, filename))
     if not requested_path.startswith(os.path.realpath(SUMMARIES_DIR) + os.sep):

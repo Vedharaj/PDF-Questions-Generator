@@ -16,12 +16,43 @@ import { useQuizStore } from "./store/useQuizStore";
 
 import "./App.css";
 
+const SUMMARY_SELECTED_FILE_COOKIE = "pdfqg_summary_selected_file";
+
+const readCookieValue = (cookieName) => {
+  if (typeof document === "undefined") {
+    return "";
+  }
+
+  const cookieEntry = document.cookie
+    .split("; ")
+    .find((entry) => entry.startsWith(`${cookieName}=`));
+
+  if (!cookieEntry) {
+    return "";
+  }
+
+  return decodeURIComponent(cookieEntry.slice(cookieName.length + 1));
+};
+
+const writeCookieValue = (cookieName, cookieValue) => {
+  if (typeof document === "undefined") {
+    return;
+  }
+
+  if (!cookieValue) {
+    document.cookie = `${cookieName}=; path=/; max-age=0; samesite=lax`;
+    return;
+  }
+
+  document.cookie = `${cookieName}=${encodeURIComponent(cookieValue)}; path=/; max-age=31536000; samesite=lax`;
+};
+
 function App() {
   const [activeSection, setActiveSection] = useState("quiz");
   const [secondaryCollapsed, setSecondaryCollapsed] = useState(false);
   const [selectedHistoryFile, setSelectedHistoryFile] = useState("");
   const [summaryFiles, setSummaryFiles] = useState([]);
-  const [selectedSummaryFile, setSelectedSummaryFile] = useState("");
+  const [selectedSummaryFile, setSelectedSummaryFile] = useState(() => readCookieValue(SUMMARY_SELECTED_FILE_COOKIE));
   const [summaryContent, setSummaryContent] = useState("");
   const [summaryFilesLoading, setSummaryFilesLoading] = useState(false);
   const [summaryContentLoading, setSummaryContentLoading] = useState(false);
@@ -73,6 +104,10 @@ function App() {
   const clearHistory = useQuizStore((state) => state.clearHistory);
 
   useEffect(() => {
+    writeCookieValue(SUMMARY_SELECTED_FILE_COOKIE, selectedSummaryFile);
+  }, [selectedSummaryFile]);
+
+  useEffect(() => {
     loadFiles();
   }, [contentMode, loadFiles]);
 
@@ -97,7 +132,7 @@ function App() {
         target instanceof HTMLSelectElement ||
         target?.isContentEditable;
 
-      if (isTypingField || !quizStarted || mode !== "quiz") {
+      if (isTypingField || !quizStarted || mode !== "quiz" || contentMode !== "mcq") {
         return;
       }
 
@@ -426,7 +461,7 @@ function App() {
             ? "Topics"
             : quizStarted
               ? contentMode === "flashcard"
-                ? "Current flashcard session"
+                ? "Flashcard Session"
                 : "Current quiz session"
               : contentMode === "flashcard"
                 ? "Flashcard configuration"
@@ -616,7 +651,7 @@ function App() {
     }
 
     if (quizStarted && contentMode === "flashcard") {
-      return <FlashcardPage apiUrl={`/api/flashcards/${encodeURIComponent(selectedFile)}`} embedded />;
+      return <FlashcardPage apiUrl={`/api/flashcards/${encodeURIComponent(selectedFile)}`} contentMode={contentMode} embedded />;
     }
 
     if (!quizStarted || !currentQuestion) {

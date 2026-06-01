@@ -60,7 +60,7 @@ export const useQuizStore = create((set, get) => ({
         contentMode === "flashcard"
           ? state.selectedFlashcardFile || ""
           : state.selectedMcqFile || "",
-      quizStarted: false,
+      quizStarted: contentMode === "flashcard",
       currentIndex: 0,
       answeredQuestions: {},
       score: 0,
@@ -153,7 +153,7 @@ export const useQuizStore = create((set, get) => ({
         questions: [],
         pageStart: minPage,
         pageEnd: maxPage,
-        quizStarted: false,
+        quizStarted: contentMode === "flashcard",
       });
 
       get().resetExam();

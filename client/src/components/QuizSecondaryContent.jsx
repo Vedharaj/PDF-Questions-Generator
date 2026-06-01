@@ -70,28 +70,32 @@ function QuizSecondaryContent({
               </div>
             </label>
 
-            <div className="sidebar-button-row">
-              <button className="ghost-button" onClick={() => setQuizStarted(false)}>
-                Change Range
-              </button>
+            {contentMode !== "flashcard" ? (
+              <>
+                <div className={`sidebar-button-row`}>
+                  <button className="ghost-button" onClick={() => setQuizStarted(false)}>
+                    Change Range
+                  </button>
 
-              <button className="shuffle-btn" onClick={shuffleQuestions}>
-                <Shuffle size={18} />
-                Shuffle
-              </button>
-            </div>
-            <div className="progress-wrapper sidebar-progress">
-              <div className="progress-info">
-                <span>
-                  Question {currentIndex + 1} / {questions.length}
-                </span>
-                <span>Score: {score}</span>
-              </div>
+                  <button className="shuffle-btn" onClick={shuffleQuestions}>
+                    <Shuffle size={18} />
+                    Shuffle
+                  </button>
+                </div>
+                <div className="progress-wrapper sidebar-progress">
+                  <div className="progress-info">
+                    <span>
+                      Question {currentIndex + 1} / {questions.length}
+                    </span>
+                    <span>Score: {score}</span>
+                  </div>
 
-              <div className="progress-bar">
-                <div className="progress-fill" style={{ width: `${progress}%` }} />
-              </div>
-            </div>
+                  <div className="progress-bar">
+                    <div className="progress-fill" style={{ width: `${progress}%` }} />
+                  </div>
+                </div>
+              </>
+            ) : null}
           </div>
         </section>
       </>

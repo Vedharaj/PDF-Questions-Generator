@@ -1,10 +1,75 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 
-function FlashcardPage({ apiUrl = "/api/flashcards", embedded = false }) {
+// Minimal defaults and helpers (original versions were removed). These
+// are lightweight fallbacks so the page renders after moving styles.
+const DEFAULT_FILTERS = { difficulty: "", bloom: "", cardType: "", concept: "" };
+
+function normalizeFlashcardPages(data) {
+	if (!data) return [];
+	if (Array.isArray(data.pages) && data.pages.length) return data.pages;
+	if (Array.isArray(data.flashcards)) return [{ page: 1, flashcards: data.flashcards }];
+	return [];
+}
+
+function cardMatchesFilters(card = {}, filters = {}, query = "") {
+	if (!card) return false;
+	if (query) {
+		const hay = JSON.stringify(card).toLowerCase();
+		if (!hay.includes(query.toLowerCase())) return false;
+	}
+	return true;
+}
+
+function buildCardKey(page, card = {}, index = 0) {
+	const id = card.id ?? card.key ?? index;
+	return `${page}-${id}`;
+}
+
+function PageNavigator({ currentPageNumber = 1, totalPages = 0, onPreviousPage, onNextPage, canGoPrevious, canGoNext }) {
+	return (
+		<>
+			<div className="flashcard-panel-heading">
+				<h2>Page {currentPageNumber}</h2>
+				<div className="flashcard-page-index">{currentPageNumber} / {totalPages}</div>
+			</div>
+			<div className="flashcard-nav-buttons">
+				<button type="button" className="study-pill" onClick={onPreviousPage} disabled={!canGoPrevious}>Previous</button>
+				<button type="button" className="study-pill" onClick={onNextPage} disabled={!canGoNext}>Next</button>
+			</div>
+		</>
+	);
+}
+
+function FlashcardViewer({ currentCard, isFlipped, onFlip, onPreviousCard, onNextCard, canGoPrevious, canGoNext, progressPercentage, currentStatus, onMarkKnown, onMarkReview, onMarkDifficult, onClearStatus, totalCards = 0, currentIndex = 0 }) {
+	return (
+		<div className="flashcard-viewer-panel">
+				<div className={`flashcard-card-face ${isFlipped ? "back" : "front"}`} onClick={onFlip}>
+					<div className="flashcard-face-label">{isFlipped ? "Back" : "Front"}</div>
+					<p>{currentCard ? (isFlipped ? (currentCard.answer || currentCard.back) : (currentCard.question || currentCard.front)) : "No card"}</p>
+					<div className="flashcard-face-hint">Card {currentIndex} / {totalCards}</div>
+				</div>
+				<div className="flashcard-viewer-controls">
+					<button className="study-pill" onClick={onPreviousCard} disabled={!canGoPrevious}>Prev</button>
+					<button className="study-pill" onClick={onNextCard} disabled={!canGoNext}>Next</button>
+				</div>
+				<div className="flashcard-viewer-progress" aria-hidden>
+					<span style={{display: 'none'}}>Progress: {progressPercentage}%</span>
+				</div>
+			</div>
+	);
+}
+
+function FlashcardPage({ apiUrl = "/api/flashcards", embedded = false, contentMode = "flashcard" }) {
 	const [data, setData] = useState(null);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState("");
-	const [visibleAnswers, setVisibleAnswers] = useState({});
+	const [currentPageIndex, setCurrentPageIndex] = useState(0);
+	const [currentCardIndex, setCurrentCardIndex] = useState(0);
+	const [isFlipped, setIsFlipped] = useState(false);
+	const [filters, setFilters] = useState(DEFAULT_FILTERS);
+	const [searchQuery, setSearchQuery] = useState("");
+	const [cardStatusMap, setCardStatusMap] = useState({});
+	const previousCardKeyRef = useRef("");
 
 	useEffect(() => {
 		let isMounted = true;
@@ -13,6 +78,13 @@ function FlashcardPage({ apiUrl = "/api/flashcards", embedded = false }) {
 			try {
 				setLoading(true);
 				setError("");
+				setCurrentPageIndex(0);
+				setCurrentCardIndex(0);
+				setIsFlipped(false);
+				setFilters(DEFAULT_FILTERS);
+				setSearchQuery("");
+				setCardStatusMap({});
+				previousCardKeyRef.current = "";
 
 				const response = await fetch(apiUrl);
 
@@ -24,11 +96,11 @@ function FlashcardPage({ apiUrl = "/api/flashcards", embedded = false }) {
 
 				if (isMounted) {
 					setData(flashcardData);
-					setVisibleAnswers({});
 				}
 			} catch (fetchError) {
 				if (isMounted) {
-					setError(fetchError.message || "Something went wrong while loading flashcards.");
+					setData(null);
+					setError(fetchError instanceof Error ? fetchError.message : "Something went wrong while loading flashcards.");
 				}
 			} finally {
 				if (isMounted) {
@@ -44,275 +116,242 @@ function FlashcardPage({ apiUrl = "/api/flashcards", embedded = false }) {
 		};
 	}, [apiUrl]);
 
-	const flashcards = data?.flashcards || [];
+	const pages = useMemo(() => normalizeFlashcardPages(data), [data]);
+	const currentPage = pages[currentPageIndex] || null;
+	const currentPageCards = currentPage?.flashcards || [];
 
-	const toggleAnswer = (index) => {
-		setVisibleAnswers((currentValue) => ({
+	// filterOptions removed (computed but unused)
+
+	const visibleCards = useMemo(
+		() => currentPageCards.filter((card) => cardMatchesFilters(card, filters, searchQuery)),
+		[currentPageCards, filters, searchQuery]
+	);
+
+	const currentCard = visibleCards[currentCardIndex] || null;
+	const currentCardKey = currentCard ? buildCardKey(currentPage?.page || currentPageIndex + 1, currentCard, currentCardIndex) : "";
+	const currentStatus = currentCardKey ? cardStatusMap[currentCardKey] || "" : "";
+
+	const studyStats = useMemo(() => {
+		const totalCards = visibleCards.length;
+		const statusCounts = visibleCards.reduce(
+			(accumulator, card, index) => {
+				const cardKey = buildCardKey(currentPage?.page || currentPageIndex + 1, card, index);
+				const status = cardStatusMap[cardKey];
+
+				if (status === "known") accumulator.knownCards += 1;
+				if (status === "review") accumulator.reviewCards += 1;
+				if (status === "difficult") accumulator.difficultCards += 1;
+
+				return accumulator;
+			},
+			{ knownCards: 0, reviewCards: 0, difficultCards: 0 }
+		);
+
+		const completedCards = statusCounts.knownCards + statusCounts.reviewCards + statusCounts.difficultCards;
+		const remainingCards = Math.max(0, totalCards - completedCards);
+		const completionPercentage = totalCards ? Math.round((completedCards / totalCards) * 100) : 0;
+
+		return {
+			totalCards,
+			knownCards: statusCounts.knownCards,
+			reviewCards: statusCounts.reviewCards,
+			difficultCards: statusCounts.difficultCards,
+			remainingCards,
+			completionPercentage,
+		};
+	}, [cardStatusMap, currentPage?.page, currentPageIndex, visibleCards]);
+
+	useEffect(() => {
+		if (!currentCardKey) {
+			previousCardKeyRef.current = "";
+			setIsFlipped(false);
+			return;
+		}
+
+		if (previousCardKeyRef.current !== currentCardKey) {
+			previousCardKeyRef.current = currentCardKey;
+			setIsFlipped(false);
+		}
+	}, [currentCardKey]);
+
+	useEffect(() => {
+		if (currentCardIndex >= visibleCards.length && visibleCards.length > 0) {
+			setCurrentCardIndex(0);
+			setIsFlipped(false);
+		}
+	}, [currentCardIndex, visibleCards.length]);
+
+	useEffect(() => {
+		if (!currentPage) {
+			return;
+		}
+
+		setCurrentCardIndex(0);
+		setIsFlipped(false);
+	}, [currentPageIndex]);
+
+	const updateCardStatus = (status) => {
+		if (!currentCardKey) {
+			return;
+		}
+
+		setCardStatusMap((currentValue) => ({
 			...currentValue,
-			[index]: !currentValue[index],
+			[currentCardKey]: status,
 		}));
 	};
 
-	const flashcardWorkspace = (
+	const clearCurrentStatus = () => {
+		if (!currentCardKey) {
+			return;
+		}
+
+		setCardStatusMap((currentValue) => {
+			const nextValue = { ...currentValue };
+			delete nextValue[currentCardKey];
+			return nextValue;
+		});
+	};
+
+	const goToPreviousPage = () => {
+		setCurrentPageIndex((currentValue) => Math.max(0, currentValue - 1));
+	};
+
+	const goToNextPage = () => {
+		setCurrentPageIndex((currentValue) => Math.min(pages.length - 1, currentValue + 1));
+	};
+
+	const goToPreviousCard = () => {
+		setCurrentCardIndex((currentValue) => Math.max(0, currentValue - 1));
+	};
+
+	const goToNextCard = () => {
+		setCurrentCardIndex((currentValue) => Math.min(visibleCards.length - 1, currentValue + 1));
+	};
+
+	const handleResetFilters = () => {
+		setFilters(DEFAULT_FILTERS);
+		setSearchQuery("");
+		setCurrentCardIndex(0);
+		setIsFlipped(false);
+	};
+
+	useEffect(() => {
+		const handleKeyDown = (event) => {
+			const target = event.target;
+			const isTypingField =
+				target instanceof HTMLInputElement ||
+				target instanceof HTMLTextAreaElement ||
+				target instanceof HTMLSelectElement ||
+				target?.isContentEditable;
+
+			if (isTypingField || loading || error || !currentCard) return;
+
+			// ignore when modifier keys are pressed
+			if (event.ctrlKey || event.altKey || event.metaKey) return;
+
+			const isSpace = event.code === "Space" || event.key === " " || event.key === "Spacebar";
+			if (!isSpace) return;
+
+			event.preventDefault();
+			setIsFlipped((currentValue) => !currentValue);
+		};
+
+		window.addEventListener("keydown", handleKeyDown);
+		return () => window.removeEventListener("keydown", handleKeyDown);
+	}, [currentCard, error, loading, visibleCards.length]);
+
+	useEffect(() => {
+		const handleKeyDown = (event) => {
+			const target = event.target;
+			const isTypingField =
+				target instanceof HTMLInputElement ||
+				target instanceof HTMLTextAreaElement ||
+				target instanceof HTMLSelectElement ||
+				target?.isContentEditable;
+
+			if (isTypingField || loading || error || contentMode !== "flashcard") return;
+
+			if (event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
+
+			if (event.key === "ArrowLeft") {
+				event.preventDefault();
+				goToPreviousCard();
+				return;
+			}
+
+			if (event.key === "ArrowRight") {
+				event.preventDefault();
+				goToNextCard();
+			}
+		};
+
+		window.addEventListener("keydown", handleKeyDown);
+		return () => window.removeEventListener("keydown", handleKeyDown);
+	}, [contentMode, error, loading, visibleCards.length]);
+
+
+	// const metadataPanel = <CardMetadata card={currentCard} />;
+
+	const content = (
 		<div className="flashcard-page">
-			<style>{`
-				.flashcard-page {
-					min-height: 100vh;
-					padding: 24px;
-					background: linear-gradient(180deg, #f8fbff 0%, #eef4ff 100%);
-					color: #102033;
-					font-family: Arial, sans-serif;
-				}
-
-				.flashcard-page * {
-					box-sizing: border-box;
-				}
-
-				.flashcard-container {
-					max-width: 1100px;
-					margin: 0 auto;
-				}
-
-				.flashcard-header {
-					margin-bottom: 24px;
-					padding: 24px;
-					background: rgba(255, 255, 255, 0.85);
-					border: 1px solid #d9e4f2;
-					border-radius: 20px;
-					box-shadow: 0 10px 30px rgba(16, 32, 51, 0.08);
-				}
-
-				.flashcard-header h1 {
-					margin: 0 0 8px;
-					font-size: clamp(1.7rem, 3vw, 2.5rem);
-				}
-
-				.flashcard-header p {
-					margin: 0;
-					color: #526071;
-				}
-
-				.flashcard-meta {
-					display: flex;
-					flex-wrap: wrap;
-					gap: 12px;
-					margin-top: 16px;
-				}
-
-				.meta-pill {
-					display: inline-flex;
-					align-items: center;
-					padding: 8px 12px;
-					border-radius: 999px;
-					background: #e8f0ff;
-					color: #1d4ed8;
-					font-size: 0.92rem;
-					font-weight: 700;
-				}
-
-				.flashcard-status {
-					padding: 16px 18px;
-					border-radius: 16px;
-					background: #ffffff;
-					border: 1px solid #d9e4f2;
-					box-shadow: 0 8px 24px rgba(16, 32, 51, 0.06);
-				}
-
-				.flashcard-status.error {
-					border-color: #f3b4b4;
-					background: #fff6f6;
-					color: #9f1239;
-				}
-
-				.flashcard-grid {
-					display: grid;
-					grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-					gap: 20px;
-				}
-
-				.flashcard-card {
-					display: flex;
-					flex-direction: column;
-					gap: 14px;
-					padding: 20px;
-					background: #ffffff;
-					border: 1px solid #d9e4f2;
-					border-radius: 20px;
-					box-shadow: 0 10px 30px rgba(16, 32, 51, 0.08);
-				}
-
-				.flashcard-card h2 {
-					margin: 0;
-					font-size: 1.15rem;
-				}
-
-				.flashcard-field {
-					padding: 12px 14px;
-					border-radius: 14px;
-					background: #f8fbff;
-					border: 1px solid #e2eaf5;
-				}
-
-				.flashcard-field strong {
-					display: block;
-					margin-bottom: 6px;
-					font-size: 0.8rem;
-					text-transform: uppercase;
-					letter-spacing: 0.04em;
-					color: #54657a;
-				}
-
-				.flashcard-field p,
-				.flashcard-field ul {
-					margin: 0;
-					color: #13253a;
-					line-height: 1.6;
-				}
-
-				.flashcard-keywords {
-					display: flex;
-					flex-wrap: wrap;
-					gap: 8px;
-				}
-
-				.flashcard-keyword {
-					padding: 6px 10px;
-					border-radius: 999px;
-					background: #edf7ff;
-					color: #075985;
-					font-size: 0.85rem;
-				}
-
-				.flashcard-answer {
-					background: #effdf5;
-					border-color: #c9f2d9;
-				}
-
-				.flashcard-actions {
-					display: flex;
-					gap: 10px;
-					flex-wrap: wrap;
-				}
-
-				.flashcard-button {
-					border: 0;
-					border-radius: 12px;
-					padding: 10px 14px;
-					background: #1d4ed8;
-					color: #ffffff;
-					font-weight: 700;
-					cursor: pointer;
-				}
-
-				.flashcard-button.secondary {
-					background: #dbeafe;
-					color: #1e40af;
-				}
-
-				.flashcard-badge-row {
-					display: flex;
-					flex-wrap: wrap;
-					gap: 8px;
-				}
-
-				.flashcard-badge {
-					padding: 6px 10px;
-					border-radius: 999px;
-					background: #f1f5f9;
-					font-size: 0.84rem;
-					color: #334155;
-				}
-
-				@media (max-width: 640px) {
-					.flashcard-page {
-						padding: 16px;
-					}
-
-					.flashcard-header,
-					.flashcard-card {
-						padding: 16px;
-						border-radius: 16px;
-					}
-				}
-			`}</style>
-
-			<div className="flashcard-container">
+			<div className="flashcard-shell">
 				<header className="flashcard-header">
-					<h1>Flashcards</h1>
-					<p>Simple flashcard viewer loaded from an API response.</p>
-					<div className="flashcard-meta">
-						<div className="meta-pill">Page {data?.page ?? "-"}</div>
-						<div className="meta-pill">Flashcard count: {data?.flashcard_count ?? flashcards.length}</div>
-						<div className="meta-pill">Source: {apiUrl}</div>
+					<div>
+						<h1>Flashcard Study</h1>
+						<p>Page-by-page flashcard study powered by the flashcard API.</p>
+					</div>
+
+					<div className="flashcard-header-meta">
+						<span>Pages: {pages.length}</span>
+						<span>Total cards: {data?.metadata?.total_flashcards ?? pages.reduce((sum, page) => sum + (page.flashcards?.length || 0), 0)}</span>
+						{/* <span>Source: {apiUrl}</span> */}
 					</div>
 				</header>
 
-				{loading ? <div className="flashcard-status">Loading flashcards...</div> : null}
+				{loading ? <div className="flashcard-panel">Loading flashcards...</div> : null}
+				{error ? <div className="flashcard-panel flashcard-empty-state">{error}</div> : null}
 
-				{error ? <div className="flashcard-status error">{error}</div> : null}
-
-				{!loading && !error && flashcards.length === 0 ? (
-					<div className="flashcard-status">No flashcards were found in the API response.</div>
+				{!loading && !error && pages.length === 0 ? (
+					<div className="flashcard-panel flashcard-empty-state">No flashcard pages were found in the API response.</div>
 				) : null}
 
-				<div className="flashcard-grid">
-					{flashcards.map((flashcard, index) => {
-						const showAnswer = Boolean(visibleAnswers[index]);
-
-						return (
-							<article key={`${flashcard.page_number ?? data?.page ?? "page"}-${index}`} className="flashcard-card">
-								<div className="flashcard-badge-row">
-									<span className="flashcard-badge">Card {index + 1}</span>
-									<span className="flashcard-badge">Page {flashcard.page_number ?? data?.page ?? "-"}</span>
-									<span className="flashcard-badge">Difficulty: {flashcard.difficulty || "-"}</span>
-								</div>
-
-								<h2>{flashcard.question}</h2>
-
-								<div className="flashcard-field">
-									<strong>Answer</strong>
-									<p>{showAnswer ? flashcard.answer : "Click the button below to show the answer."}</p>
-								</div>
-
-								<div className="flashcard-field">
-									<strong>Concept</strong>
-									<p>{flashcard.concept || "-"}</p>
-								</div>
-
-								<div className="flashcard-badge-row">
-									<span className="flashcard-badge">Bloom: {flashcard.bloom_taxonomy_level || "-"}</span>
-									<span className="flashcard-badge">Type: {flashcard.card_type || "-"}</span>
-								</div>
-
-								<div className="flashcard-field">
-									<strong>Keywords</strong>
-									<div className="flashcard-keywords">
-										{(flashcard.keywords || []).map((keyword) => (
-											<span key={keyword} className="flashcard-keyword">
-												{keyword}
-											</span>
-										))}
-										{(!flashcard.keywords || flashcard.keywords.length === 0) && <span className="flashcard-keyword">No keywords</span>}
-									</div>
-								</div>
-
-								<div className="flashcard-actions">
-									<button type="button" className="flashcard-button" onClick={() => toggleAnswer(index)}>
-										{showAnswer ? "Hide answer" : "Show answer"}
-									</button>
-									<button type="button" className="flashcard-button secondary" onClick={() => toggleAnswer(index)}>
-										Toggle answer
-									</button>
-								</div>
-							</article>
-						);
-					})}
-				</div>
+				{!loading && !error && pages.length > 0 ? (
+					<main className="flashcard-main">
+						<div className="flashcard-panel">
+							<PageNavigator
+								totalPages={pages.length}
+								currentPageNumber={currentPage?.page ?? currentPageIndex + 1}
+								onPreviousPage={goToPreviousPage}
+								onNextPage={goToNextPage}
+								canGoPrevious={currentPageIndex > 0}
+								canGoNext={currentPageIndex < pages.length - 1}
+							/>
+							<FlashcardViewer
+								currentCard={currentCard}
+								isFlipped={isFlipped}
+								onFlip={() => setIsFlipped((currentValue) => !currentValue)}
+								onPreviousCard={goToPreviousCard}
+								onNextCard={goToNextCard}
+								canGoPrevious={currentCardIndex > 0}
+								canGoNext={currentCardIndex < visibleCards.length - 1}
+								currentStatus={currentStatus}
+								progressPercentage={studyStats.totalCards ? Math.round(((currentCardIndex + 1) / studyStats.totalCards) * 100) : 0}
+								currentIndex={currentCardIndex + 1}
+								onMarkKnown={() => updateCardStatus("known")}
+								onMarkReview={() => updateCardStatus("review")}
+								onMarkDifficult={() => updateCardStatus("difficult")}
+								onClearStatus={clearCurrentStatus}
+								totalCards={studyStats.totalCards}
+							/>
+						</div>
+					</main>
+				) : null}
 			</div>
 		</div>
 	);
 
-	return embedded ? flashcardWorkspace : <div className="app-shell quiz-shell">{flashcardWorkspace}</div>;
+	return embedded ? content : <div className="app-shell quiz-shell">{content}</div>;
 }
 
 export default FlashcardPage;
